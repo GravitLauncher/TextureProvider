@@ -76,8 +76,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/get/:uuid/:texture_type", get(handlers::get_texture))
         .route("/upload/:texture_type", post(handlers::upload_texture))
         .route("/api/upload/:type", post(handlers::admin_upload_texture))
+        .route("/api/get/:username/:uuid", get(handlers::get_textures_by_username_uuid))
         .route("/download/:texture_type/:uuid", get(handlers::download_texture))
         .route("/download/:hash", get(handlers::download_by_hash))
+        .route("/download/username/:texture_type/:username", get(handlers::download_texture_by_username))
         .route("/files/:hash.:ext", get(handlers::serve_texture_file))
         .layer(middleware::from_fn_with_state(
             state.clone(),

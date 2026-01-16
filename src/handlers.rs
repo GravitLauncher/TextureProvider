@@ -474,3 +474,198 @@ pub async fn download_by_hash(
         format!("Texture not found for hash: {}", hash),
     ))
 }
+
+/// GET /api/get/:username/:uuid - Get all textures for a user by username/uuid (admin only)
+/// This endpoint requires an admin token and will update the username<->uuid mapping
+/// Returns the same content as /get/:uuid but updates the unreliable username mapping
+pub async fn get_textures_by_username_uuid(
+    State(state): State<AppState>,
+    AuthAdmin: AuthAdmin,
+    Path((username, user_uuid)): Path<(String, Uuid)>,
+) -> Result<Json<TexturesResponse>, (StatusCode, String)> {
+    // Update or insert the username<->uuid mapping
+    sqlx::query!(
+        r#"
+        INSERT INTO username_mappings (user_uuid, username, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_uuid, username)
+        DO UPDATE SET updated_at = NOW()
+        "#,
+        user_uuid,
+        username
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update username mapping: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update username mapping".to_string(),
+        )
+    })?;
+
+    tracing::info!("Updated username mapping: {} <-> {}", username, user_uuid);
+
+    // Now get the textures using the UUID (reuse existing logic)
+    let mut response = TexturesResponse {
+        SKIN: None,
+        CAPE: None,
+    };
+
+    // Try to get SKIN
+    match state.retriever.get_texture(user_uuid, TextureType::SKIN).await {
+        Ok(Some(retrieved)) => {
+            response.SKIN = Some(TextureResponse {
+                url: retrieved.url,
+                digest: retrieved.hash,
+                metadata: retrieved.metadata,
+            });
+        }
+        Ok(None) => {
+            tracing::debug!("No SKIN texture found for user {}", user_uuid);
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve SKIN texture: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve SKIN texture: {}", e),
+            ));
+        }
+    }
+
+    // Try to get CAPE
+    match state.retriever.get_texture(user_uuid, TextureType::CAPE).await {
+        Ok(Some(retrieved)) => {
+            response.CAPE = Some(TextureResponse {
+                url: retrieved.url,
+                digest: retrieved.hash,
+                metadata: retrieved.metadata,
+            });
+        }
+        Ok(None) => {
+            tracing::debug!("No CAPE texture found for user {}", user_uuid);
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve CAPE texture: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve CAPE texture: {}", e),
+            ));
+        }
+    }
+
+    Ok(Json(response))
+}
+
+/// GET /download/username/:texture_type/:username - Download texture by username
+/// This endpoint looks up the UUID from username and returns the texture with cache headers
+/// Cache lifetime is configurable via USERNAME_CACHE_SECONDS (default 8 hours)
+/// 
+/// Flow:
+/// 1. Try to find username in local mappings
+/// 2. If not found, use the retrieval chain which may include Mojang API resolution
+/// 3. Save the new mapping if chain successfully resolved it
+/// 4. Return the texture with cache headers
+pub async fn download_texture_by_username(
+    State(state): State<AppState>,
+    Path((texture_type_str, username)): Path<(String, String)>,
+) -> Result<Response<Body>, (StatusCode, String)> {
+    let texture_type: TextureType = texture_type_str
+        .parse()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+
+    // Try to look up the UUID from username in local database first
+    let user_uuid = match sqlx::query!(
+        r#"
+        SELECT user_uuid
+        FROM username_mappings
+        WHERE username = $1
+        LIMIT 1
+        "#,
+        username
+    )
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(Some(result)) => {
+            tracing::debug!("Resolved username {} to UUID {} from local mapping", username, result.user_uuid);
+            Some(result.user_uuid)
+        }
+        Ok(None) => {
+            tracing::debug!("Username {} not found in local mappings", username);
+            None
+        }
+        Err(e) => {
+            tracing::error!("Failed to lookup username: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to lookup username".to_string(),
+            ));
+        }
+    };
+
+    // If we have a local mapping, use it directly
+    let retrieved = if let Some(uuid) = user_uuid {
+        // Use the retriever chain with the UUID
+        state
+            .retriever
+            .get_texture_bytes(uuid, texture_type)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve texture: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to retrieve texture: {}", e),
+                )
+            })?
+            .ok_or_else(|| {
+                tracing::debug!("Texture not found for {} {}", texture_type_str, uuid);
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Texture not found for {}", texture_type_str),
+                )
+            })?
+    } else {
+        // No local mapping, try the retrieval chain with username
+        // The chain may include MojangRetriever which can resolve usernames
+        tracing::info!("Attempting to retrieve texture for username {} via retrieval chain", username);
+        
+        match state.retriever.get_texture_bytes_by_username(&username, texture_type).await {
+            Ok(Some(texture_bytes)) => {
+                tracing::info!("Successfully retrieved texture for username {} via retrieval chain", username);
+                
+                // If the retrieval succeeded, we might have resolved a UUID
+                // Try to save the mapping if we can extract it (optional optimization)
+                // For now, just return the texture
+                texture_bytes
+            }
+            Ok(None) => {
+                tracing::debug!("Retrieval chain could not find texture for username {}", username);
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    format!("Username '{}' not found", username),
+                ));
+            }
+            Err(e) => {
+                tracing::error!("Failed to retrieve texture via chain: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to retrieve texture: {}", e),
+                ));
+            }
+        }
+    };
+
+    // Calculate cache max-age from config
+    let cache_max_age = state.config.username_cache_seconds;
+    let cache_control = format!("public, max-age={}", cache_max_age);
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, cache_control.as_str()),
+        ],
+        retrieved.bytes,
+    )
+        .into_response())
+}

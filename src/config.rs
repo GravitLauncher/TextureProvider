@@ -17,6 +17,7 @@ pub struct Config {
     pub s3_secret_key: Option<String>,
     pub server_port: u16,
     pub admin_token: Option<String>,
+    pub username_cache_seconds: u64,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -93,6 +94,10 @@ impl Config {
                 .parse()
                 .map_err(|e| anyhow::anyhow!("Invalid SERVER_PORT: {}", e))?,
             admin_token: env::var("ADMIN_TOKEN").ok(),
+            username_cache_seconds: env::var("USERNAME_CACHE_SECONDS")
+                .unwrap_or_else(|_| "28800".to_string()) // 8 hours default
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Invalid USERNAME_CACHE_SECONDS: {}", e))?,
         })
     }
 

@@ -54,6 +54,46 @@ impl MojangRetriever {
         }
     }
 
+    /// Resolve a username to UUID using Mojang API
+    /// This is useful for legacy systems that only have usernames
+    pub async fn resolve_username_to_uuid(&self, username: &str) -> Result<Option<Uuid>> {
+        let url = format!("{}/users/profiles/minecraft/{}", self.api_base_url, username);
+        
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to resolve username from Mojang: {}", e))?;
+
+        // 204 No Content means user doesn't exist
+        if response.status() == reqwest::StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Mojang API returned error: {}",
+                response.status()
+            ));
+        }
+
+        #[derive(Deserialize)]
+        struct UuidResponse {
+            id: String,
+        }
+
+        let uuid_response: UuidResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow!("Failed to parse UUID response: {}", e))?;
+
+        let uuid = Uuid::parse_str(&uuid_response.id)
+            .map_err(|e| anyhow!("Failed to parse UUID: {}", e))?;
+
+        Ok(Some(uuid))
+    }
+
     /// Fetch the full profile from Mojang session server
     async fn fetch_profile(&self, uuid: Uuid) -> Result<ProfileResponse> {
         let url = format!("{}/{}", self.session_server_url, uuid);
@@ -220,5 +260,25 @@ impl TextureRetriever for MojangRetriever {
 
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         matches!(texture_type, TextureType::SKIN | TextureType::CAPE)
+    }
+
+    async fn get_texture_bytes_by_username(
+        &self,
+        username: &str,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Only support SKIN and CAPE from Mojang
+        if !matches!(texture_type, TextureType::SKIN | TextureType::CAPE) {
+            return Ok(None);
+        }
+
+        // Resolve username to UUID
+        let uuid = match self.resolve_username_to_uuid(username).await? {
+            Some(uuid) => uuid,
+            None => return Ok(None),
+        };
+
+        // Now get the texture bytes using the UUID
+        self.get_texture_bytes(uuid, texture_type).await
     }
 }

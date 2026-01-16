@@ -173,6 +173,62 @@ impl TextureRetriever for ChainRetriever {
             .iter()
             .any(|handler| handler.supports_texture_type(texture_type))
     }
+
+    async fn get_texture_bytes_by_username(
+        &self,
+        username: &str,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Try each handler in order
+        for (index, handler) in self.handlers.iter().enumerate() {
+            // Skip handlers that don't support this texture type
+            if !handler.supports_texture_type(texture_type) {
+                continue;
+            }
+
+            tracing::debug!(
+                "Trying handler {} for username {} and texture type {:?}",
+                index,
+                username,
+                texture_type
+            );
+
+            match handler.get_texture_bytes_by_username(username, texture_type).await {
+                Ok(Some(texture_bytes)) => {
+                    tracing::debug!(
+                        "Handler {} successfully retrieved texture bytes for username {}",
+                        index,
+                        username
+                    );
+                    return Ok(Some(texture_bytes));
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        "Handler {} found no texture for username {}, trying next handler",
+                        index,
+                        username
+                    );
+                    // Continue to next handler
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Handler {} failed with error: {}, trying next handler",
+                        index,
+                        e
+                    );
+                    // Continue to next handler on error
+                }
+            }
+        }
+
+        tracing::debug!(
+            "No handler in the chain could retrieve texture type {:?} for username {}",
+            texture_type,
+            username
+        );
+
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

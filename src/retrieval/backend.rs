@@ -53,6 +53,18 @@ pub trait TextureRetriever: Send + Sync {
         Ok(None)
     }
 
+    /// Retrieve texture file bytes by username (for username-based lookups)
+    /// This allows certain retrievers (like MojangRetriever) to resolve usernames to UUIDs
+    /// Returns None if the retriever cannot resolve the username or texture not found
+    async fn get_texture_bytes_by_username(
+        &self,
+        _username: &str,
+        _texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Default implementation returns None - only implemented by retrievers that support username resolution
+        Ok(None)
+    }
+
     /// Check if this retriever can provide the given texture type
     fn supports_texture_type(&self, texture_type: TextureType) -> bool;
 }
