@@ -1,6 +1,7 @@
 use crate::auth::AuthUser;
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
+use crate::retrieval::TextureRetriever;
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use axum::{
@@ -17,6 +18,7 @@ use uuid::Uuid;
 pub struct AppState {
     pub db: PgPool,
     pub storage: Arc<dyn StorageBackend>,
+    pub retriever: Arc<dyn TextureRetriever>,
     pub config: Config,
 }
 
@@ -25,41 +27,50 @@ pub async fn get_textures(
     State(state): State<AppState>,
     Path(user_uuid): Path<Uuid>,
 ) -> Result<Json<TexturesResponse>, (StatusCode, String)> {
-    let textures = sqlx::query!(
-        r#"
-        SELECT texture_type, file_hash, file_url, metadata
-        FROM textures
-        WHERE user_uuid = $1
-        "#,
-        user_uuid
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch textures: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch textures".to_string())
-    })?;
-
     let mut response = TexturesResponse {
         SKIN: None,
         CAPE: None,
     };
 
-    for texture in textures {
-        let metadata: Option<TextureMetadata> = texture
-            .metadata
-            .and_then(|v| serde_json::from_value(v).ok());
+    // Try to get SKIN
+    match state.retriever.get_texture(user_uuid, TextureType::SKIN).await {
+        Ok(Some(retrieved)) => {
+            response.SKIN = Some(TextureResponse {
+                url: retrieved.url,
+                digest: retrieved.hash,
+                metadata: retrieved.metadata,
+            });
+        }
+        Ok(None) => {
+            tracing::debug!("No SKIN texture found for user {}", user_uuid);
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve SKIN texture: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve SKIN texture: {}", e),
+            ));
+        }
+    }
 
-        let texture_response = TextureResponse {
-            url: texture.file_url,
-            digest: texture.file_hash,
-            metadata,
-        };
-
-        match texture.texture_type.as_str() {
-            "SKIN" => response.SKIN = Some(texture_response),
-            "CAPE" => response.CAPE = Some(texture_response),
-            _ => {}
+    // Try to get CAPE
+    match state.retriever.get_texture(user_uuid, TextureType::CAPE).await {
+        Ok(Some(retrieved)) => {
+            response.CAPE = Some(TextureResponse {
+                url: retrieved.url,
+                digest: retrieved.hash,
+                metadata: retrieved.metadata,
+            });
+        }
+        Ok(None) => {
+            tracing::debug!("No CAPE texture found for user {}", user_uuid);
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve CAPE texture: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve CAPE texture: {}", e),
+            ));
         }
     }
 
@@ -75,33 +86,28 @@ pub async fn get_texture(
         .parse()
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
 
-    let texture = sqlx::query!(
-        r#"
-        SELECT file_hash, file_url, metadata
-        FROM textures
-        WHERE user_uuid = $1 AND texture_type = $2
-        "#,
-        user_uuid,
-        texture_type.to_string()
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch texture: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch texture".to_string())
-    })?
-    .ok_or_else(|| {
-        (StatusCode::NOT_FOUND, format!("Texture not found for {}", texture_type_str))
-    })?;
-
-    let metadata: Option<TextureMetadata> = texture
-        .metadata
-        .and_then(|v| serde_json::from_value(v).ok());
+    let retrieved = state
+        .retriever
+        .get_texture(user_uuid, texture_type)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to retrieve texture: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve texture: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Texture not found for {}", texture_type_str),
+            )
+        })?;
 
     Ok(Json(TextureResponse {
-        url: texture.file_url,
-        digest: texture.file_hash,
-        metadata,
+        url: retrieved.url,
+        digest: retrieved.hash,
+        metadata: retrieved.metadata,
     }))
 }
 

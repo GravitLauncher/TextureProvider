@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod handlers;
 mod models;
+mod retrieval;
 mod storage;
 
 use axum::{
@@ -54,10 +55,15 @@ async fn main() -> anyhow::Result<()> {
     // Initialize storage
     let storage: Arc<dyn storage::StorageBackend> = create_storage(config.clone());
 
+    // Initialize texture retriever
+    let retriever = retrieval::create_retriever(config.clone(), storage.clone(), db.clone());
+    tracing::info!("Retrieval type: {:?}", config.retrieval_type);
+
     // Build application state
     let state = AppState {
         db,
         storage,
+        retriever,
         config: config.clone(),
     };
 

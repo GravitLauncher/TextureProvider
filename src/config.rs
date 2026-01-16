@@ -7,6 +7,7 @@ pub struct Config {
     pub jwt_public_key: String,
     pub base_url: String,
     pub storage_type: StorageType,
+    pub retrieval_type: RetrievalType,
     pub local_storage_path: Option<String>,
     pub s3_bucket: Option<String>,
     pub s3_region: Option<String>,
@@ -34,6 +35,26 @@ impl std::str::FromStr for StorageType {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub enum RetrievalType {
+    Storage,
+    Mojang,
+    DefaultSkin,
+}
+
+impl std::str::FromStr for RetrievalType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "storage" => Ok(RetrievalType::Storage),
+            "mojang" => Ok(RetrievalType::Mojang),
+            "default_skin" => Ok(RetrievalType::DefaultSkin),
+            _ => Err(anyhow::anyhow!("Invalid retrieval type: {}", s)),
+        }
+    }
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, anyhow::Error> {
         Ok(Config {
@@ -46,6 +67,9 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:3000".to_string()),
             storage_type: env::var("STORAGE_TYPE")
                 .unwrap_or_else(|_| "local".to_string())
+                .parse()?,
+            retrieval_type: env::var("RETRIEVAL_TYPE")
+                .unwrap_or_else(|_| "storage".to_string())
                 .parse()?,
             local_storage_path: env::var("LOCAL_STORAGE_PATH").ok(),
             s3_bucket: env::var("S3_BUCKET").ok(),

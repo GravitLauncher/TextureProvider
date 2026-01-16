@@ -2,11 +2,7 @@ use super::backend::StorageBackend;
 use crate::config::Config;
 use anyhow::Result;
 use async_trait::async_trait;
-
-#[cfg(feature = "s3")]
-use aws_config::BehaviorVersion;
-#[cfg(feature = "s3")]
-use aws_sdk_s3::{config::Credentials, primitives::ByteStream};
+use std::sync::Arc;
 
 pub struct S3Storage {
     bucket: String,
@@ -39,30 +35,33 @@ impl S3Storage {
     }
 
     /// Get or create AWS S3 client
-    #[cfg(feature = "s3")]
     async fn get_client(&self) -> Result<aws_sdk_s3::Client> {
-        use aws_sdk_s3::Client;
+        #[cfg(feature = "s3")]
+        {
+            use aws_config::BehaviorVersion;
+            use aws_sdk_s3::config::Credentials;
 
-        let mut config_loader = aws_config::defaults(BehaviorVersion::latest());
+            let mut config_loader = aws_config::defaults(BehaviorVersion::latest());
 
-        // Add credentials if provided
-        if let Some(creds) = &self.credentials {
-            config_loader = config_loader.credentials_provider(Credentials::new(
-                &creds.access_key,
-                &creds.secret_key,
-                None,
-                None,
-                "static",
-            ));
+            // Add credentials if provided
+            if let Some(creds) = &self.credentials {
+                config_loader = config_loader.credentials_provider(Credentials::new(
+                    &creds.access_key,
+                    &creds.secret_key,
+                    None,
+                    None,
+                    "static",
+                ));
+            }
+
+            let config = config_loader.load().await;
+            Ok(aws_sdk_s3::Client::new(&config))
         }
 
-        let config = config_loader.load().await;
-        Ok(Client::new(&config))
-    }
-
-    #[cfg(not(feature = "s3"))]
-    async fn get_client(&self) -> Result<()> {
-        Err(anyhow::anyhow!("S3 feature not enabled"))
+        #[cfg(not(feature = "s3"))]
+        {
+            Err(anyhow::anyhow!("S3 feature not enabled"))
+        }
     }
 
     /// Get file path in S3 bucket
