@@ -64,8 +64,8 @@ impl S3Storage {
     }
 
     /// Get file path in S3 bucket
-    fn get_file_path(&self, hash: &str, extension: &str) -> String {
-        format!("{}.{}", hash, extension)
+    fn get_file_path(&self, hash: &str, _extension: &str) -> String {
+        format!("{}", hash)
     }
 
     /// Generate S3 URL

@@ -28,7 +28,7 @@ impl StorageBackend for LocalStorage {
         // Create directory if it doesn't exist
         tokio::fs::create_dir_all(&self.storage_path).await?;
 
-        let file_name = format!("{}.{}", hash, extension);
+        let file_name = format!("{}", hash);
         let file_path = self.storage_path.join(&file_name);
         
         tokio::fs::write(&file_path, bytes).await?;
@@ -36,8 +36,8 @@ impl StorageBackend for LocalStorage {
         Ok(self.generate_url(hash, extension))
     }
 
-    async fn get_file(&self, hash: &str, extension: &str) -> Result<Vec<u8>> {
-        let file_name = format!("{}.{}", hash, extension);
+    async fn get_file(&self, hash: &str, _extension: &str) -> Result<Vec<u8>> {
+        let file_name = format!("{}", hash);
         let file_path = self.storage_path.join(&file_name);
         
         tokio::fs::read(&file_path).await.map_err(|e| {
@@ -45,12 +45,11 @@ impl StorageBackend for LocalStorage {
         })
     }
 
-    fn generate_url(&self, hash: &str, extension: &str) -> String {
+    fn generate_url(&self, hash: &str, _extension: &str) -> String {
         format!(
-            "{}/{}.{}",
+            "{}/{}",
             self.base_url.trim_end_matches('/'),
-            hash,
-            extension
+            hash
         )
     }
 }
