@@ -15,6 +15,15 @@ pub trait TextureRetriever: Send + Sync {
         texture_type: TextureType,
     ) -> Result<Option<RetrievedTexture>>;
 
+    /// Retrieve texture file bytes for a user
+    /// Returns None if the texture is not available from this retrieval source
+    /// This is more efficient than downloading via URL for storage-based retrievers
+    async fn get_texture_bytes(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>>;
+
     /// Check if this retriever can provide the given texture type
     fn supports_texture_type(&self, texture_type: TextureType) -> bool;
 }
@@ -26,6 +35,17 @@ pub struct RetrievedTexture {
     pub url: String,
     /// SHA256 hash of the texture data
     pub hash: String,
+    /// Optional metadata (e.g., model type for skins)
+    pub metadata: Option<TextureMetadata>,
+}
+
+/// Represents a successfully retrieved texture with file bytes
+#[derive(Debug, Clone)]
+pub struct RetrievedTextureBytes {
+    /// SHA256 hash of the texture data
+    pub hash: String,
+    /// File bytes of the texture
+    pub bytes: Vec<u8>,
     /// Optional metadata (e.g., model type for skins)
     pub metadata: Option<TextureMetadata>,
 }

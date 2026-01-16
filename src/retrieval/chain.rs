@@ -1,4 +1,4 @@
-use super::backend::{RetrievedTexture, TextureRetriever};
+use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -97,6 +97,44 @@ impl TextureRetriever for ChainRetriever {
         Ok(None)
     }
 
+    async fn get_texture_bytes(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Try each handler in order
+        for (index, handler) in self.handlers.iter().enumerate() {
+            // Skip handlers that don't support this texture type
+            if !handler.supports_texture_type(texture_type) {
+                continue;
+            }
+
+            match handler.get_texture_bytes(user_uuid, texture_type).await {
+                Ok(Some(texture_bytes)) => {
+                    tracing::debug!(
+                        "Handler {} successfully retrieved texture bytes for user {}",
+                        index,
+                        user_uuid
+                    );
+                    return Ok(Some(texture_bytes));
+                }
+                Ok(None) => {
+                    // Continue to next handler
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Handler {} failed with error: {}, trying next handler",
+                        index,
+                        e
+                    );
+                    // Continue to next handler on error
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         // Chain supports a texture type if any handler supports it
         self.handlers
@@ -134,6 +172,17 @@ mod tests {
             } else {
                 Ok(None)
             }
+        }
+
+        async fn get_texture_bytes(
+            &self,
+            _user_uuid: Uuid,
+            _texture_type: TextureType,
+        ) -> Result<Option<RetrievedTextureBytes>> {
+            if self.should_fail {
+                return Err(anyhow::anyhow!("Mock failure"));
+            }
+            Ok(None)
         }
 
         fn supports_texture_type(&self, texture_type: TextureType) -> bool {

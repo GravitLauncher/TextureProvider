@@ -1,4 +1,4 @@
-use super::backend::{RetrievedTexture, TextureRetriever};
+use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -65,6 +65,16 @@ impl TextureRetriever for DefaultSkinRetriever {
         }
     }
 
+    async fn get_texture_bytes(
+        &self,
+        _user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // DefaultSkinRetriever doesn't have file bytes, it only has a URL
+        // Return None to allow next retriever in chain to handle it
+        Ok(None)
+    }
+
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         // Only supports SKIN type, not CAPE
         matches!(texture_type, TextureType::SKIN)
@@ -120,6 +130,25 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
                 Ok(Some(RetrievedTexture {
                     url,
                     hash: self.default_skin_hash.clone(),
+                    metadata: None,
+                }))
+            }
+            TextureType::CAPE => {
+                Ok(None)
+            }
+        }
+    }
+
+    async fn get_texture_bytes(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        match texture_type {
+            TextureType::SKIN => {
+                Ok(Some(RetrievedTextureBytes {
+                    hash: self.default_skin_hash.clone(),
+                    bytes: self.default_skin_data.clone(),
                     metadata: None,
                 }))
             }

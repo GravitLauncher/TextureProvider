@@ -1,4 +1,4 @@
-use super::backend::{RetrievedTexture, TextureRetriever};
+use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureType};
 use anyhow::{anyhow, Result};
@@ -162,6 +162,41 @@ impl TextureRetriever for MojangRetriever {
             hash,
             metadata,
         }))
+    }
+
+    async fn get_texture_bytes(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // For Mojang retriever, we need to download the texture bytes
+        // First get the texture metadata
+        let texture = self.get_texture(user_uuid, texture_type).await?;
+
+        match texture {
+            Some(texture) => {
+                // Download the texture bytes
+                let response = self
+                    .client
+                    .get(&texture.url)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow!("Failed to download texture: {}", e))?;
+
+                let bytes = response
+                    .bytes()
+                    .await
+                    .map_err(|e| anyhow!("Failed to read texture bytes: {}", e))?
+                    .to_vec();
+
+                Ok(Some(RetrievedTextureBytes {
+                    hash: texture.hash,
+                    bytes,
+                    metadata: texture.metadata,
+                }))
+            }
+            None => Ok(None),
+        }
     }
 
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {

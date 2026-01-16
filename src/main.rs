@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/get/:uuid/:texture_type", get(handlers::get_texture))
         .route("/upload/:texture_type", post(handlers::upload_texture))
         .route("/download/:texture_type/:uuid", get(handlers::download_texture))
+        .route("/files/:hash.:ext", get(handlers::serve_texture_file))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             add_public_key_to_state,

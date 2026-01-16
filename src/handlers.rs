@@ -228,33 +228,42 @@ pub async fn download_texture(
         .parse()
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
 
-    // Get texture info from database
-    let texture = sqlx::query!(
-        r#"
-        SELECT file_hash
-        FROM textures
-        WHERE user_uuid = $1 AND texture_type = $2
-        "#,
-        user_uuid,
-        texture_type.to_string()
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch texture: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch texture".to_string())
-    })?
-    .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Texture not found for {}", texture_type_str),
-        )
-    })?;
+    // Use the retriever to get texture bytes (efficient, no duplication)
+    let retrieved = state
+        .retriever
+        .get_texture_bytes(user_uuid, texture_type)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to retrieve texture: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve texture: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Texture not found for {}", texture_type_str),
+            )
+        })?;
 
-    // Get file bytes from storage
+    Ok((
+        [(header::CONTENT_TYPE, "image/png")],
+        retrieved.bytes,
+    )
+        .into_response())
+}
+
+/// GET /files/{hash}.{ext} - Serve texture files directly from storage
+/// This provides efficient file distribution for files that have been uploaded
+pub async fn serve_texture_file(
+    State(state): State<AppState>,
+    Path((hash, extension)): Path<(String, String)>,
+) -> Result<Response<Body>, (StatusCode, String)> {
+    // Get file bytes from storage by hash
     let file_bytes = state
         .storage
-        .get_file(&texture.file_hash, texture_type.file_extension())
+        .get_file(&hash, &extension)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get file: {}", e);
