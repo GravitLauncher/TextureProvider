@@ -4,6 +4,7 @@ use crate::storage::StorageBackend;
 use anyhow::Result;
 use async_trait::async_trait;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -53,6 +54,36 @@ impl TextureRetriever for StorageRetriever {
             }
             None => Ok(None),
         }
+    }
+
+    async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
+        let texture = sqlx::query!(
+            r#"
+            SELECT file_hash, file_url, metadata, texture_type
+            FROM textures
+            WHERE user_uuid = $1
+            "#,
+            user_uuid
+        )
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(texture
+            .into_iter()
+            .map(|e| {
+                let metadata: Option<TextureMetadata> =
+                    e.metadata.and_then(|v| serde_json::from_value(v).ok());
+
+                (
+                    e.texture_type.to_owned(),
+                    RetrievedTexture {
+                        url: e.file_url,
+                        hash: e.file_hash,
+                        metadata,
+                    },
+                )
+            })
+            .collect())
     }
 
     async fn get_texture_bytes(

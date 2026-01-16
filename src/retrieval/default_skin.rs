@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::backend::{
     download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever,
 };
@@ -66,6 +68,19 @@ impl TextureRetriever for DefaultSkinRetriever {
                 Ok(None)
             }
         }
+    }
+
+    async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
+        let mut map = HashMap::new();
+        map.insert(
+            "SKIN".to_owned(),
+            RetrievedTexture {
+                url: self.default_steve_url.clone(),
+                hash: self.default_steve_hash.clone(),
+                metadata: None, // Default skin has no special metadata
+            },
+        );
+        Ok(map)
     }
 
     async fn get_texture_bytes(
@@ -155,6 +170,24 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
             }
             TextureType::CAPE => Ok(None),
         }
+    }
+
+    async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
+        let mut map = HashMap::new();
+        let url = format!(
+            "{}/download/{}",
+            self.base_url,
+            self.default_skin_hash.clone()
+        );
+        map.insert(
+            "SKIN".to_owned(),
+            RetrievedTexture {
+                url,
+                hash: self.default_skin_hash.clone(),
+                metadata: None,
+            },
+        );
+        Ok(map)
     }
 
     async fn get_texture_bytes(

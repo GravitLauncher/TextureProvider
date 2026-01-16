@@ -232,11 +232,7 @@ impl MojangRetriever {
 
 #[async_trait]
 impl TextureRetriever for MojangRetriever {
-    async fn get_texture(
-        &self,
-        user_uuid: Uuid,
-        texture_type: TextureType,
-    ) -> Result<Option<RetrievedTexture>> {
+    async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
         let mut fetch_uuid = user_uuid;
 
         if self.use_database_username_in_mojang_requests {
@@ -268,7 +264,7 @@ impl TextureRetriever for MojangRetriever {
             }
         }
 
-        self.get_texture_from_mojang(fetch_uuid, texture_type).await
+        self.get_textures_from_mojang(fetch_uuid).await
     }
 
     async fn get_texture_bytes(

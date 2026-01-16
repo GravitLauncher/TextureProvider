@@ -36,54 +36,39 @@ pub async fn get_textures(
         CAPE: None,
     };
 
-    // Try to get SKIN
-    match state
+    // Use the retriever's get_textures method to retrieve all textures at once
+    let textures = state
         .retriever
-        .get_texture(user_uuid, TextureType::SKIN)
+        .get_textures(user_uuid)
         .await
-    {
-        Ok(Some(retrieved)) => {
-            response.SKIN = Some(TextureResponse {
-                url: retrieved.url,
-                digest: retrieved.hash,
-                metadata: retrieved.metadata,
-            });
-        }
-        Ok(None) => {
-            tracing::debug!("No SKIN texture found for user {}", user_uuid);
-        }
-        Err(e) => {
-            tracing::error!("Failed to retrieve SKIN texture: {}", e);
-            return Err((
+        .map_err(|e| {
+            tracing::error!("Failed to retrieve textures: {}", e);
+            (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve SKIN texture: {}", e),
-            ));
-        }
+                format!("Failed to retrieve textures: {}", e),
+            )
+        })?;
+
+    // Extract SKIN if available
+    if let Some(retrieved) = textures.get("SKIN") {
+        response.SKIN = Some(TextureResponse {
+            url: retrieved.url.clone(),
+            digest: retrieved.hash.clone(),
+            metadata: retrieved.metadata.clone(),
+        });
+    } else {
+        tracing::debug!("No SKIN texture found for user {}", user_uuid);
     }
 
-    // Try to get CAPE
-    match state
-        .retriever
-        .get_texture(user_uuid, TextureType::CAPE)
-        .await
-    {
-        Ok(Some(retrieved)) => {
-            response.CAPE = Some(TextureResponse {
-                url: retrieved.url,
-                digest: retrieved.hash,
-                metadata: retrieved.metadata,
-            });
-        }
-        Ok(None) => {
-            tracing::debug!("No CAPE texture found for user {}", user_uuid);
-        }
-        Err(e) => {
-            tracing::error!("Failed to retrieve CAPE texture: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve CAPE texture: {}", e),
-            ));
-        }
+    // Extract CAPE if available
+    if let Some(retrieved) = textures.get("CAPE") {
+        response.CAPE = Some(TextureResponse {
+            url: retrieved.url.clone(),
+            digest: retrieved.hash.clone(),
+            metadata: retrieved.metadata.clone(),
+        });
+    } else {
+        tracing::debug!("No CAPE texture found for user {}", user_uuid);
     }
 
     Ok(Json(response))
@@ -606,59 +591,43 @@ pub async fn get_textures_by_username_uuid(
     tracing::info!("Updated username mapping: {} <-> {}", username, user_uuid);
 
     // Now get the textures using the UUID (reuse existing logic)
+    let textures = state
+        .retriever
+        .get_textures(user_uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to retrieve textures: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to retrieve textures: {}", e),
+            )
+        })?;
+
     let mut response = TexturesResponse {
         SKIN: None,
         CAPE: None,
     };
 
-    // Try to get SKIN
-    match state
-        .retriever
-        .get_texture(user_uuid, TextureType::SKIN)
-        .await
-    {
-        Ok(Some(retrieved)) => {
-            response.SKIN = Some(TextureResponse {
-                url: retrieved.url,
-                digest: retrieved.hash,
-                metadata: retrieved.metadata,
-            });
-        }
-        Ok(None) => {
-            tracing::debug!("No SKIN texture found for user {}", user_uuid);
-        }
-        Err(e) => {
-            tracing::error!("Failed to retrieve SKIN texture: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve SKIN texture: {}", e),
-            ));
-        }
+    // Extract SKIN if available
+    if let Some(retrieved) = textures.get("SKIN") {
+        response.SKIN = Some(TextureResponse {
+            url: retrieved.url.clone(),
+            digest: retrieved.hash.clone(),
+            metadata: retrieved.metadata.clone(),
+        });
+    } else {
+        tracing::debug!("No SKIN texture found for user {}", user_uuid);
     }
 
-    // Try to get CAPE
-    match state
-        .retriever
-        .get_texture(user_uuid, TextureType::CAPE)
-        .await
-    {
-        Ok(Some(retrieved)) => {
-            response.CAPE = Some(TextureResponse {
-                url: retrieved.url,
-                digest: retrieved.hash,
-                metadata: retrieved.metadata,
-            });
-        }
-        Ok(None) => {
-            tracing::debug!("No CAPE texture found for user {}", user_uuid);
-        }
-        Err(e) => {
-            tracing::error!("Failed to retrieve CAPE texture: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve CAPE texture: {}", e),
-            ));
-        }
+    // Extract CAPE if available
+    if let Some(retrieved) = textures.get("CAPE") {
+        response.CAPE = Some(TextureResponse {
+            url: retrieved.url.clone(),
+            digest: retrieved.hash.clone(),
+            metadata: retrieved.metadata.clone(),
+        });
+    } else {
+        tracing::debug!("No CAPE texture found for user {}", user_uuid);
     }
 
     Ok(Json(response))

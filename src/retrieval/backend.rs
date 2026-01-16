@@ -1,4 +1,6 @@
-use crate::models::{TextureMetadata, TextureType};
+use std::collections::HashMap;
+
+use crate::{models::{TextureMetadata, TextureType}};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -31,7 +33,16 @@ pub trait TextureRetriever: Send + Sync {
         &self,
         user_uuid: Uuid,
         texture_type: TextureType,
-    ) -> Result<Option<RetrievedTexture>>;
+    ) -> Result<Option<RetrievedTexture>> {
+        let mut textures = self.get_textures(user_uuid).await?;
+        Ok(textures.remove(&texture_type.to_string()))
+    }
+
+
+    async fn get_textures(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<HashMap<String, RetrievedTexture>>;
 
     /// Retrieve texture file bytes for a user
     /// Returns None if the texture is not available from this retrieval source

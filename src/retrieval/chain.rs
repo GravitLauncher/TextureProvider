@@ -2,7 +2,7 @@ use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 /// Chain of texture retrievers that tries each handler in order
@@ -95,6 +95,56 @@ impl TextureRetriever for ChainRetriever {
         );
 
         Ok(None)
+    }
+
+
+    async fn get_textures(
+        &self,
+        user_uuid: Uuid,
+    ) -> Result<HashMap<String, RetrievedTexture>> {
+        // Try each handler in order
+        for (index, handler) in self.handlers.iter().enumerate() {
+            // Skip handlers that don't support this texture type
+
+            tracing::debug!(
+                "Trying handler {} for all textures",
+                index
+            );
+
+            match handler.get_textures(user_uuid).await {
+                Ok(map) => {
+                    if map.is_empty() {
+                        tracing::debug!(
+                        "Handler {} found no texture for user {}, trying next handler",
+                        index,
+                        user_uuid
+                    );
+                    } else {
+                        tracing::debug!(
+                        "Handler {} successfully retrieved texture for user {}",
+                        index,
+                        user_uuid
+                    );
+                    return Ok(map);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Handler {} failed with error: {}, trying next handler",
+                        index,
+                        e
+                    );
+                    // Continue to next handler on error
+                }
+            }
+        }
+
+        tracing::debug!(
+            "No handler in the chain could retrieve textures for user {}",
+            user_uuid
+        );
+
+        Ok(HashMap::new())
     }
 
     async fn get_texture_bytes(
@@ -234,7 +284,7 @@ impl TextureRetriever for ChainRetriever {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::{collections::HashMap, sync::Arc};
 
     // Mock retriever for testing
     struct MockRetriever {
@@ -246,6 +296,16 @@ mod tests {
 
     #[async_trait]
     impl TextureRetriever for MockRetriever {
+        async fn get_textures(
+            &self,
+            _user_uuid: Uuid,
+        ) -> Result<HashMap<String, RetrievedTexture>> {
+            if self.should_fail {
+                return Err(anyhow::anyhow!("Mock failure"));
+            }
+            Ok(HashMap::new())
+        }
+
         async fn get_texture(
             &self,
             _user_uuid: Uuid,
