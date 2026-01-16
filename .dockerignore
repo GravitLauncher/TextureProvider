@@ -1,0 +1,52 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README.md
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Database
+*.db
+*.sqlite
+
+# Test files
+tests/
+benches/
+*.tests
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: texture-provider-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: texture_user
+      POSTGRES_PASSWORD: texture_password
+      POSTGRES_DB: texture_provider
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U texture_user -d texture_provider"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Texture Provider Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: texture-provider-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://texture_user:texture_password@postgres/texture_provider
+      
+      # JWT (You should replace this with your actual public key)
+      JWT_PUBLIC_KEY: BASE64_ECDSA_LAUNCHSERVER_KEY
+      
+      # Base URL
+      BASE_URL: http://localhost:3000
+      
+      # Storage Configuration
+      STORAGE_TYPE: local
+      LOCAL_STORAGE_PATH: /app/uploads
+      
+      # Retrieval Configuration
+      RETRIEVAL_TYPE: storage
+      # RETRIEVAL_CHAIN: storage,mojang,default_skin
+      
+      # Server
+      SERVER_PORT: 3000
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/get/00000000-0000-0000-0000-000000000000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local

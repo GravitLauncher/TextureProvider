@@ -18,7 +18,7 @@ Copy `.env.example` to `.env` and configure:
 ```bash
 # Required
 DATABASE_URL=postgresql://username:password@localhost/texture_provider
-JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----
+JWT_PUBLIC_KEY=BASE64_ECDSA_LAUNCHSERVER_KEY
 
 # Optional (defaults shown)
 BASE_URL=http://localhost:3000
@@ -44,7 +44,79 @@ psql -U username -d texture_provider -f migrations/001_initial.sql
 
 ## Building and Running
 
-### Development
+### Docker
+
+### Using Docker Compose (Recommended)
+
+The easiest way to run the service is with Docker Compose, which includes PostgreSQL:
+
+```bash
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+
+# Stop services
+docker-compose down
+```
+
+The service will be available at `http://localhost:3000`
+
+**Note:** Update the `JWT_PUBLIC_KEY` in `docker-compose.yml` with your actual public key before starting.
+
+### Using Docker Build
+
+Build the image manually:
+
+```bash
+docker build -t texture-provider2 .
+```
+
+Run the container:
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/texture_provider" \
+  -e JWT_PUBLIC_KEY="BASE64_ECDSA_LAUNCHSERVER_KEY" \
+  -e STORAGE_TYPE=local \
+  texture-provider2
+```
+
+### Using Published Docker Images
+
+Images are automatically published to GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/your-username/texture-provider2:latest
+
+# Run the image
+docker run -d \
+  -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/texture_provider" \
+  -e JWT_PUBLIC_KEY="..." \
+  ghcr.io/your-username/texture-provider2:latest
+```
+
+### GitHub Actions CI/CD
+
+The project includes a GitHub Actions workflow that:
+
+1. **Builds** Docker images on push to `main`/`master` branches
+2. **Publishes** images to GitHub Container Registry (ghcr.io)
+3. **Supports** multi-platform builds (linux/amd64, linux/arm64)
+4. **Creates** version tags for semantic versioning (v*.*.*)
+5. **Generates** SBOM (Software Bill of Materials) for security analysis
+
+**Workflow triggers:**
+- Push to main/master branches
+- New version tags (e.g., v1.0.0)
+- Pull requests (build only, no push)
+- Manual workflow dispatch
+
+## Development
 
 Set `DATABASE_URL` environment variable before building:
 
