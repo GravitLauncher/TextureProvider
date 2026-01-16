@@ -4,7 +4,7 @@ pub mod mojang;
 pub mod storage_retriever;
 pub mod default_skin;
 
-pub use backend::TextureRetriever;
+pub use backend::{download_file_from_url, TextureRetriever};
 pub use chain::ChainRetriever;
 pub use mojang::MojangRetriever;
 pub use storage_retriever::StorageRetriever;

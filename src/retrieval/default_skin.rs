@@ -1,4 +1,4 @@
-use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
+use super::backend::{download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -73,6 +73,28 @@ impl TextureRetriever for DefaultSkinRetriever {
         // DefaultSkinRetriever doesn't have file bytes, it only has a URL
         // Return None to allow next retriever in chain to handle it
         Ok(None)
+    }
+
+    async fn get_texture_bytes_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Check if the requested hash matches our default skin
+        if hash == self.default_steve_hash {
+            // Download from the Mojang URL
+            match download_file_from_url(&self.default_steve_url).await? {
+                Some(bytes) => {
+                    Ok(Some(RetrievedTextureBytes {
+                        hash: self.default_steve_hash.clone(),
+                        bytes,
+                        metadata: None,
+                    }))
+                }
+                None => Ok(None),
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {

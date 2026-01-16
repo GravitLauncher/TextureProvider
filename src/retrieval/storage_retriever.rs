@@ -97,6 +97,40 @@ impl TextureRetriever for StorageRetriever {
         }
     }
 
+    async fn get_texture_bytes_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Try to get from storage (works for both S3 and local storage)
+        match self.storage.get_file(hash, "png").await {
+            Ok(bytes) => {
+                // Look up metadata from database if available
+                let texture = sqlx::query!(
+                    r#"
+                    SELECT metadata
+                    FROM textures
+                    WHERE file_hash = $1
+                    LIMIT 1
+                    "#,
+                    hash
+                )
+                .fetch_optional(&self.db)
+                .await?;
+
+                let metadata: Option<TextureMetadata> = texture
+                    .and_then(|t| t.metadata)
+                    .and_then(|v| serde_json::from_value(v).ok());
+
+                Ok(Some(RetrievedTextureBytes {
+                    hash: hash.to_string(),
+                    bytes,
+                    metadata,
+                }))
+            }
+            Err(_) => Ok(None), // File not in storage
+        }
+    }
+
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         // Storage retriever supports all texture types
         matches!(texture_type, TextureType::SKIN | TextureType::CAPE)

@@ -1,7 +1,28 @@
 use crate::models::{TextureMetadata, TextureType};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use uuid::Uuid;
+
+/// Utility function to download a file from a URL
+/// Returns the file bytes or None if the download fails
+pub async fn download_file_from_url(url: &str) -> Result<Option<Vec<u8>>> {
+    let response = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| anyhow!("Failed to read file bytes: {}", e))?
+        .to_vec();
+
+    Ok(Some(bytes))
+}
 
 /// Trait defining the interface for texture retrieval strategies
 /// This separates the concern of how textures are fetched from where they are stored

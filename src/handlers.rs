@@ -1,7 +1,7 @@
 use crate::auth::{AuthAdmin, AuthUser};
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
-use crate::retrieval::TextureRetriever;
+use crate::retrieval::{download_file_from_url, TextureRetriever};
 use crate::storage::StorageBackend;
 use anyhow::{anyhow, Result};
 use axum::{
@@ -404,27 +404,15 @@ pub async fn admin_upload_texture(
 }
 
 /// GET /download/:hash - Download skin by hash
-/// Tries to get from storage first, then retriever (including EmbeddedDefaultSkinRetriever),
-/// then falls back to http/https download if applicable
+/// Uses the retrieval chain to get texture bytes by hash (StorageRetriever, EmbeddedDefaultSkinRetriever, etc.)
+/// Falls back to http/https download if the texture has an external URL in the database
 pub async fn download_by_hash(
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
-    // First, try to get from storage
-    match state.storage.get_file(&hash, "png").await {
-        Ok(file_bytes) => {
-            return Ok((
-                [(header::CONTENT_TYPE, "image/png")],
-                file_bytes,
-            ).into_response());
-        }
-        Err(e) => {
-            tracing::debug!("File not found in storage for hash {}: {}", hash, e);
-            // Continue to fallback
-        }
-    }
-
-    // Try to get from retriever chain by hash (including EmbeddedDefaultSkinRetriever)
+    // Try to get from retriever chain by hash
+    // The chain will try StorageRetriever (handles both S3 and local storage),
+    // then EmbeddedDefaultSkinRetriever, then other retrievers in order
     match state.retriever.get_texture_bytes_by_hash(&hash).await {
         Ok(Some(retrieved)) => {
             return Ok((
@@ -440,10 +428,11 @@ pub async fn download_by_hash(
         }
     }
 
-    // Check database for a texture with this hash to potentially fetch from URL
+    // Check database for a texture with this hash to potentially fetch from external URL
+    // This handles cases where textures are stored with http/https URLs (e.g., Mojang API URLs)
     let texture_record = sqlx::query!(
         r#"
-        SELECT user_uuid, texture_type, file_url
+        SELECT file_url
         FROM textures
         WHERE file_hash = $1
         LIMIT 1
@@ -462,27 +451,18 @@ pub async fn download_by_hash(
         if record.file_url.starts_with("http://") || record.file_url.starts_with("https://") {
             tracing::debug!("Attempting to fetch texture from URL: {}", record.file_url);
             
-            let res = reqwest::Client::new()
-                .get(&record.file_url)
-                .send()
-                .await;
-            
-            match res {
-                Ok(response) => {
-                    match response.bytes().await {
-                        Ok(bytes) => {
-                            return Ok((
-                                [(header::CONTENT_TYPE, "image/png")],
-                                bytes,
-                            ).into_response());
-                        }
-                        Err(err) => {
-                            tracing::error!("Failed to download texture from URL: {}", err);
-                        }
-                    }
+            match download_file_from_url(&record.file_url).await {
+                Ok(Some(bytes)) => {
+                    return Ok((
+                        [(header::CONTENT_TYPE, "image/png")],
+                        bytes,
+                    ).into_response());
+                }
+                Ok(None) => {
+                    tracing::warn!("Failed to download texture from URL: {}", record.file_url);
                 }
                 Err(err) => {
-                    tracing::error!("Failed to fetch texture from URL: {}", err);
+                    tracing::error!("Error downloading texture from URL: {}", err);
                 }
             }
         }

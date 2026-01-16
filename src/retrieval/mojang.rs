@@ -1,4 +1,4 @@
-use super::backend::{RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
+use super::backend::{download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureType};
 use anyhow::{anyhow, Result};
@@ -193,6 +193,25 @@ impl TextureRetriever for MojangRetriever {
                     hash: texture.hash,
                     bytes,
                     metadata: texture.metadata,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn get_texture_bytes_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Mojang textures follow the pattern: https://textures.minecraft.net/texture/SHA256_HASH
+        let url = format!("https://textures.minecraft.net/texture/{}", hash);
+        
+        match download_file_from_url(&url).await? {
+            Some(bytes) => {
+                Ok(Some(RetrievedTextureBytes {
+                    hash: hash.to_string(),
+                    bytes,
+                    metadata: None,
                 }))
             }
             None => Ok(None),
