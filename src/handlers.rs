@@ -496,12 +496,21 @@ pub async fn download_by_hash(
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
+    let cache_max_age = state.config.hash_cache_seconds;
+    let cache_control = format!("public, max-age={}", cache_max_age);
     // Try to get from retriever chain by hash
     // The chain will try StorageRetriever (handles both S3 and local storage),
     // then EmbeddedDefaultSkinRetriever, then other retrievers in order
     match state.retriever.get_texture_bytes_by_hash(&hash).await {
         Ok(Some(retrieved)) => {
-            return Ok(([(header::CONTENT_TYPE, "image/png")], retrieved.bytes).into_response());
+            return Ok((
+                [
+                    (header::CONTENT_TYPE, "image/png"),
+                    (header::CACHE_CONTROL, cache_control.as_str()),
+                ],
+                retrieved.bytes,
+            )
+                .into_response());
         }
         Ok(None) => {
             tracing::debug!("Retriever chain did not provide texture for hash: {}", hash);
@@ -539,7 +548,14 @@ pub async fn download_by_hash(
 
             match download_file_from_url(&record.file_url).await {
                 Ok(Some(bytes)) => {
-                    return Ok(([(header::CONTENT_TYPE, "image/png")], bytes).into_response());
+                    return Ok((
+                        [
+                            (header::CONTENT_TYPE, "image/png"),
+                            (header::CACHE_CONTROL, cache_control.as_str()),
+                        ],
+                        bytes,
+                    )
+                        .into_response());
                 }
                 Ok(None) => {
                     tracing::warn!("Failed to download texture from URL: {}", record.file_url);

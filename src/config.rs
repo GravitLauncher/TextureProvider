@@ -18,6 +18,7 @@ pub struct Config {
     pub server_port: u16,
     pub admin_token: Option<String>,
     pub username_cache_seconds: u64,
+    pub hash_cache_seconds: u64,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -100,6 +101,10 @@ impl Config {
                 .unwrap_or_else(|_| "28800".to_string()) // 8 hours default
                 .parse()
                 .map_err(|e| anyhow::anyhow!("Invalid USERNAME_CACHE_SECONDS: {}", e))?,
+            hash_cache_seconds: env::var("HASH_CACHE_SECONDS")
+                .unwrap_or_else(|_| "1209600".to_string()) // 14 days default
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Invalid HASH_CACHE_SECONDS: {}", e))?,
         })
     }
 
