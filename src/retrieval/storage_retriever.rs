@@ -16,10 +16,7 @@ pub struct StorageRetriever {
 
 impl StorageRetriever {
     pub fn new(storage: Arc<dyn StorageBackend>, db: PgPool) -> Self {
-        StorageRetriever {
-            db,
-            storage,
-        }
+        StorageRetriever { db, storage }
     }
 }
 
@@ -97,10 +94,7 @@ impl TextureRetriever for StorageRetriever {
         }
     }
 
-    async fn get_texture_bytes_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<RetrievedTextureBytes>> {
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
         // Try to get from storage (works for both S3 and local storage)
         match self.storage.get_file(hash, "png").await {
             Ok(bytes) => {

@@ -61,12 +61,15 @@ impl std::str::FromStr for RetrievalType {
 impl Config {
     pub fn from_env() -> Result<Self, anyhow::Error> {
         // Parse retrieval_chain from comma-separated list if provided
-        let retrieval_chain = env::var("RETRIEVAL_CHAIN").ok().map(|chain_str| {
-            chain_str
-                .split(',')
-                .map(|s| s.trim().parse::<RetrievalType>())
-                .collect::<Result<Vec<_>, _>>()
-        }).transpose()?;
+        let retrieval_chain = env::var("RETRIEVAL_CHAIN")
+            .ok()
+            .map(|chain_str| {
+                chain_str
+                    .split(',')
+                    .map(|s| s.trim().parse::<RetrievalType>())
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
 
         Ok(Config {
             database_url: env::var("DATABASE_URL")
@@ -74,8 +77,7 @@ impl Config {
                 .map_err(|_| anyhow::anyhow!("DATABASE_URL must be set"))?,
             jwt_public_key: env::var("JWT_PUBLIC_KEY")
                 .map_err(|_| anyhow::anyhow!("JWT_PUBLIC_KEY must be set"))?,
-            base_url: env::var("BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            base_url: env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
             storage_type: env::var("STORAGE_TYPE")
                 .unwrap_or_else(|_| "local".to_string())
                 .parse()?,
@@ -108,10 +110,9 @@ impl Config {
                     "LOCAL_STORAGE_PATH must be set for local storage"
                 ));
             }
-        } else if self.storage_type == StorageType::S3
-            && self.s3_bucket.is_none() {
-                return Err(anyhow::anyhow!("S3_BUCKET must be set for S3 storage"));
-            }
+        } else if self.storage_type == StorageType::S3 && self.s3_bucket.is_none() {
+            return Err(anyhow::anyhow!("S3_BUCKET must be set for S3 storage"));
+        }
         Ok(())
     }
 }

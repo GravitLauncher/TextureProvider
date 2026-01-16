@@ -1,6 +1,8 @@
 use crate::auth::{AuthAdmin, AuthUser};
 use crate::config::Config;
-use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
+use crate::models::{
+    TextureMetadata, TextureResponse, TextureType, TexturesResponse, UploadOptions,
+};
 use crate::retrieval::{download_file_from_url, TextureRetriever};
 use crate::storage::StorageBackend;
 use anyhow::{anyhow, Result};
@@ -20,7 +22,7 @@ pub struct AppState {
     pub db: PgPool,
     pub storage: Arc<dyn StorageBackend>,
     pub retriever: Arc<dyn TextureRetriever>,
-    pub public_key : Arc<DecodingKey>,
+    pub public_key: Arc<DecodingKey>,
     pub config: Config,
 }
 
@@ -35,7 +37,11 @@ pub async fn get_textures(
     };
 
     // Try to get SKIN
-    match state.retriever.get_texture(user_uuid, TextureType::SKIN).await {
+    match state
+        .retriever
+        .get_texture(user_uuid, TextureType::SKIN)
+        .await
+    {
         Ok(Some(retrieved)) => {
             response.SKIN = Some(TextureResponse {
                 url: retrieved.url,
@@ -56,7 +62,11 @@ pub async fn get_textures(
     }
 
     // Try to get CAPE
-    match state.retriever.get_texture(user_uuid, TextureType::CAPE).await {
+    match state
+        .retriever
+        .get_texture(user_uuid, TextureType::CAPE)
+        .await
+    {
         Ok(Some(retrieved)) => {
             response.CAPE = Some(TextureResponse {
                 url: retrieved.url,
@@ -84,9 +94,12 @@ pub async fn get_texture(
     State(state): State<AppState>,
     Path((user_uuid, texture_type_str)): Path<(Uuid, String)>,
 ) -> Result<Json<TextureResponse>, (StatusCode, String)> {
-    let texture_type: TextureType = texture_type_str
-        .parse()
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+    let texture_type: TextureType = texture_type_str.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid texture type: {}", e),
+        )
+    })?;
 
     let retrieved = state
         .retriever
@@ -120,48 +133,62 @@ pub async fn upload_texture(
     Path(texture_type_str): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<TextureResponse>, (StatusCode, String)> {
-    let texture_type: TextureType = texture_type_str
-        .parse()
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+    let texture_type: TextureType = texture_type_str.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid texture type: {}", e),
+        )
+    })?;
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut options: Option<UploadOptions> = None;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid multipart data: {}", e)))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid multipart data: {}", e),
+        )
+    })? {
         let name = field.name().unwrap_or("").to_string();
 
         match name.as_str() {
             "file" => {
-                let data = field
-                    .bytes()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e)))?;
+                let data = field.bytes().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read file: {}", e),
+                    )
+                })?;
 
                 // Validate PNG
                 if !is_png(&data) {
-                    return Err((StatusCode::BAD_REQUEST, "File must be a PNG image".to_string()));
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "File must be a PNG image".to_string(),
+                    ));
                 }
 
                 file_bytes = Some(data.to_vec());
             }
             "options" => {
-                let json_str = field
-                    .text()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read options: {}", e)))?;
+                let json_str = field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read options: {}", e),
+                    )
+                })?;
                 options = Some(serde_json::from_str(&json_str).map_err(|e| {
-                    (StatusCode::BAD_REQUEST, format!("Invalid options JSON: {}", e))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid options JSON: {}", e),
+                    )
                 })?);
             }
             _ => {}
         }
     }
 
-    let file_bytes = file_bytes
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
+    let file_bytes =
+        file_bytes.ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
 
     let options = options.unwrap_or(UploadOptions { modelSlim: false });
 
@@ -175,7 +202,10 @@ pub async fn upload_texture(
         .await
         .map_err(|e| {
             tracing::error!("Failed to store file: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to store file".to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store file".to_string(),
+            )
         })?;
 
     // Prepare metadata
@@ -203,7 +233,10 @@ pub async fn upload_texture(
     .await
     .map_err(|e| {
         tracing::error!("Failed to save texture: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save texture".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save texture".to_string(),
+        )
     })?;
 
     Ok(Json(TextureResponse {
@@ -224,9 +257,12 @@ pub async fn download_texture(
     State(state): State<AppState>,
     Path((texture_type_str, user_uuid)): Path<(String, Uuid)>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
-    let texture_type: TextureType = texture_type_str
-        .parse()
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+    let texture_type: TextureType = texture_type_str.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid texture type: {}", e),
+        )
+    })?;
 
     // Use the retriever to get texture bytes (efficient, no duplication)
     let retrieved = state
@@ -247,34 +283,25 @@ pub async fn download_texture(
             )
         })?;
 
-    Ok((
-        [(header::CONTENT_TYPE, "image/png")],
-        retrieved.bytes,
-    )
-        .into_response())
+    Ok(([(header::CONTENT_TYPE, "image/png")], retrieved.bytes).into_response())
 }
 
 /// GET /files/{hash}.{ext} - Serve texture files directly from storage
 /// This provides efficient file distribution for files that have been uploaded
 pub async fn serve_texture_file(
     State(state): State<AppState>,
-    Path((hash, extension)): Path<(String, String)>,
+    Path((hash)): Path<(String)>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
     // Get file bytes from storage by hash
-    let file_bytes = state
-        .storage
-        .get_file(&hash, &extension)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get file: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get file".to_string())
-        })?;
+    let file_bytes = state.storage.get_file(&hash, ".png").await.map_err(|e| {
+        tracing::error!("Failed to get file: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get file".to_string(),
+        )
+    })?;
 
-    Ok((
-        [(header::CONTENT_TYPE, "image/png")],
-        file_bytes,
-    )
-        .into_response())
+    Ok(([(header::CONTENT_TYPE, "image/png")], file_bytes).into_response())
 }
 
 /// Check if bytes represent a PNG file
@@ -290,62 +317,115 @@ pub async fn admin_upload_texture(
     Path(texture_type_str): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<TextureResponse>, (StatusCode, String)> {
-    let texture_type: TextureType = texture_type_str
-        .parse()
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
-    
+    let texture_type: TextureType = texture_type_str.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid texture type: {}", e),
+        )
+    })?;
+
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut options: Option<UploadOptions> = None;
     let mut user_uuid: Option<Uuid> = None;
+    let mut user_username: Option<String> = None;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid multipart data: {}", e)))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid multipart data: {}", e),
+        )
+    })? {
         let name = field.name().unwrap_or("").to_string();
 
         match name.as_str() {
             "file" => {
-                let data = field
-                    .bytes()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e)))?;
+                let data = field.bytes().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read file: {}", e),
+                    )
+                })?;
 
                 // Validate PNG
                 if !is_png(&data) {
-                    return Err((StatusCode::BAD_REQUEST, "File must be a PNG image".to_string()));
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "File must be a PNG image".to_string(),
+                    ));
                 }
 
                 file_bytes = Some(data.to_vec());
             }
             "options" => {
-                let json_str = field
-                    .text()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read options: {}", e)))?;
+                let json_str = field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read options: {}", e),
+                    )
+                })?;
                 options = Some(serde_json::from_str(&json_str).map_err(|e| {
-                    (StatusCode::BAD_REQUEST, format!("Invalid options JSON: {}", e))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid options JSON: {}", e),
+                    )
                 })?);
             }
-            "user" => {
-                let uuid_str = field
-                    .text()
-                    .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read user UUID: {}", e)))?;
-                user_uuid = Some(Uuid::parse_str(&uuid_str).map_err(|e| {
-                    (StatusCode::BAD_REQUEST, format!("Invalid user UUID: {}", e))
-                })?);
+            "uuid" => {
+                let uuid_str = field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read user UUID: {}", e),
+                    )
+                })?;
+                user_uuid =
+                    Some(Uuid::parse_str(&uuid_str).map_err(|e| {
+                        (StatusCode::BAD_REQUEST, format!("Invalid user UUID: {}", e))
+                    })?);
+            }
+            "username" => {
+                let username_str = field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to read user UUID: {}", e),
+                    )
+                })?;
+                user_username = Some(username_str);
             }
             _ => {}
         }
     }
 
-    let user_uuid = user_uuid
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "User UUID not provided".to_string()))?;
+    let user_uuid = user_uuid.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "User UUID not provided".to_string(),
+        )
+    })?;
 
-    let file_bytes = file_bytes
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
+    if let Some(username) = user_username {
+        sqlx::query!(
+            r#"
+        INSERT INTO username_mappings (user_uuid, username, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_uuid, username)
+        DO UPDATE SET updated_at = NOW()
+        "#,
+            user_uuid,
+            username
+        )
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update username mapping: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update username mapping".to_string(),
+            )
+        })?;
+    }
+
+    let file_bytes =
+        file_bytes.ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
 
     let options = options.unwrap_or(UploadOptions { modelSlim: false });
 
@@ -359,7 +439,10 @@ pub async fn admin_upload_texture(
         .await
         .map_err(|e| {
             tracing::error!("Failed to store file: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to store file".to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store file".to_string(),
+            )
         })?;
 
     // Prepare metadata
@@ -387,7 +470,10 @@ pub async fn admin_upload_texture(
     .await
     .map_err(|e| {
         tracing::error!("Failed to save texture: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save texture".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save texture".to_string(),
+        )
     })?;
 
     Ok(Json(TextureResponse {
@@ -415,10 +501,7 @@ pub async fn download_by_hash(
     // then EmbeddedDefaultSkinRetriever, then other retrievers in order
     match state.retriever.get_texture_bytes_by_hash(&hash).await {
         Ok(Some(retrieved)) => {
-            return Ok((
-                [(header::CONTENT_TYPE, "image/png")],
-                retrieved.bytes,
-            ).into_response());
+            return Ok(([(header::CONTENT_TYPE, "image/png")], retrieved.bytes).into_response());
         }
         Ok(None) => {
             tracing::debug!("Retriever chain did not provide texture for hash: {}", hash);
@@ -443,20 +526,20 @@ pub async fn download_by_hash(
     .await
     .map_err(|e| {
         tracing::error!("Failed to query database: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database query failed".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database query failed".to_string(),
+        )
     })?;
 
     if let Some(record) = texture_record {
         // If we have a record with an http/https URL, try to fetch from there
         if record.file_url.starts_with("http://") || record.file_url.starts_with("https://") {
             tracing::debug!("Attempting to fetch texture from URL: {}", record.file_url);
-            
+
             match download_file_from_url(&record.file_url).await {
                 Ok(Some(bytes)) => {
-                    return Ok((
-                        [(header::CONTENT_TYPE, "image/png")],
-                        bytes,
-                    ).into_response());
+                    return Ok(([(header::CONTENT_TYPE, "image/png")], bytes).into_response());
                 }
                 Ok(None) => {
                     tracing::warn!("Failed to download texture from URL: {}", record.file_url);
@@ -513,7 +596,11 @@ pub async fn get_textures_by_username_uuid(
     };
 
     // Try to get SKIN
-    match state.retriever.get_texture(user_uuid, TextureType::SKIN).await {
+    match state
+        .retriever
+        .get_texture(user_uuid, TextureType::SKIN)
+        .await
+    {
         Ok(Some(retrieved)) => {
             response.SKIN = Some(TextureResponse {
                 url: retrieved.url,
@@ -534,7 +621,11 @@ pub async fn get_textures_by_username_uuid(
     }
 
     // Try to get CAPE
-    match state.retriever.get_texture(user_uuid, TextureType::CAPE).await {
+    match state
+        .retriever
+        .get_texture(user_uuid, TextureType::CAPE)
+        .await
+    {
         Ok(Some(retrieved)) => {
             response.CAPE = Some(TextureResponse {
                 url: retrieved.url,
@@ -560,7 +651,7 @@ pub async fn get_textures_by_username_uuid(
 /// GET /download/username/:texture_type/:username - Download texture by username
 /// This endpoint looks up the UUID from username and returns the texture with cache headers
 /// Cache lifetime is configurable via USERNAME_CACHE_SECONDS (default 8 hours)
-/// 
+///
 /// Flow:
 /// 1. Try to find username in local mappings
 /// 2. If not found, use the retrieval chain which may include Mojang API resolution
@@ -570,9 +661,12 @@ pub async fn download_texture_by_username(
     State(state): State<AppState>,
     Path((texture_type_str, username)): Path<(String, String)>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
-    let texture_type: TextureType = texture_type_str
-        .parse()
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+    let texture_type: TextureType = texture_type_str.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid texture type: {}", e),
+        )
+    })?;
 
     // Try to look up the UUID from username in local database first
     let user_uuid = match sqlx::query!(
@@ -588,7 +682,11 @@ pub async fn download_texture_by_username(
     .await
     {
         Ok(Some(result)) => {
-            tracing::debug!("Resolved username {} to UUID {} from local mapping", username, result.user_uuid);
+            tracing::debug!(
+                "Resolved username {} to UUID {} from local mapping",
+                username,
+                result.user_uuid
+            );
             Some(result.user_uuid)
         }
         Ok(None) => {
@@ -628,19 +726,32 @@ pub async fn download_texture_by_username(
     } else {
         // No local mapping, try the retrieval chain with username
         // The chain may include MojangRetriever which can resolve usernames
-        tracing::info!("Attempting to retrieve texture for username {} via retrieval chain", username);
-        
-        match state.retriever.get_texture_bytes_by_username(&username, texture_type).await {
+        tracing::info!(
+            "Attempting to retrieve texture for username {} via retrieval chain",
+            username
+        );
+
+        match state
+            .retriever
+            .get_texture_bytes_by_username(&username, texture_type)
+            .await
+        {
             Ok(Some(texture_bytes)) => {
-                tracing::info!("Successfully retrieved texture for username {} via retrieval chain", username);
-                
+                tracing::info!(
+                    "Successfully retrieved texture for username {} via retrieval chain",
+                    username
+                );
+
                 // If the retrieval succeeded, we might have resolved a UUID
                 // Try to save the mapping if we can extract it (optional optimization)
                 // For now, just return the texture
                 texture_bytes
             }
             Ok(None) => {
-                tracing::debug!("Retrieval chain could not find texture for username {}", username);
+                tracing::debug!(
+                    "Retrieval chain could not find texture for username {}",
+                    username
+                );
                 return Err((
                     StatusCode::NOT_FOUND,
                     format!("Username '{}' not found", username),
@@ -658,7 +769,7 @@ pub async fn download_texture_by_username(
 
     // Calculate cache max-age from config
     let cache_max_age = state.config.username_cache_seconds;
-    let cache_control = format!("public, max-age={}", cache_max_age);
+    let cache_control = format!("private, max-age={}", cache_max_age);
 
     Ok((
         [

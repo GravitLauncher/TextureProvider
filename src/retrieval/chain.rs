@@ -135,10 +135,7 @@ impl TextureRetriever for ChainRetriever {
         Ok(None)
     }
 
-    async fn get_texture_bytes_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<RetrievedTextureBytes>> {
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
         // Try each handler in order
         for (index, handler) in self.handlers.iter().enumerate() {
             match handler.get_texture_bytes_by_hash(hash).await {
@@ -193,7 +190,10 @@ impl TextureRetriever for ChainRetriever {
                 texture_type
             );
 
-            match handler.get_texture_bytes_by_username(username, texture_type).await {
+            match handler
+                .get_texture_bytes_by_username(username, texture_type)
+                .await
+            {
                 Ok(Some(texture_bytes)) => {
                     tracing::debug!(
                         "Handler {} successfully retrieved texture bytes for username {}",

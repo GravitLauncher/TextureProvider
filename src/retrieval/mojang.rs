@@ -1,4 +1,6 @@
-use super::backend::{download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
+use super::backend::{
+    download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever,
+};
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureType};
 use anyhow::{anyhow, Result};
@@ -50,15 +52,19 @@ impl MojangRetriever {
         MojangRetriever {
             client: reqwest::Client::new(),
             api_base_url: "https://api.mojang.com".to_string(),
-            session_server_url: "https://sessionserver.mojang.com/session/minecraft/profile".to_string(),
+            session_server_url: "https://sessionserver.mojang.com/session/minecraft/profile"
+                .to_string(),
         }
     }
 
     /// Resolve a username to UUID using Mojang API
     /// This is useful for legacy systems that only have usernames
     pub async fn resolve_username_to_uuid(&self, username: &str) -> Result<Option<Uuid>> {
-        let url = format!("{}/users/profiles/minecraft/{}", self.api_base_url, username);
-        
+        let url = format!(
+            "{}/users/profiles/minecraft/{}",
+            self.api_base_url, username
+        );
+
         let response = self
             .client
             .get(&url)
@@ -72,10 +78,7 @@ impl MojangRetriever {
         }
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "Mojang API returned error: {}",
-                response.status()
-            ));
+            return Err(anyhow!("Mojang API returned error: {}", response.status()));
         }
 
         #[derive(Deserialize)]
@@ -97,7 +100,7 @@ impl MojangRetriever {
     /// Fetch the full profile from Mojang session server
     async fn fetch_profile(&self, uuid: Uuid) -> Result<ProfileResponse> {
         let url = format!("{}/{}", self.session_server_url, uuid);
-        
+
         let response = self
             .client
             .get(&url)
@@ -106,10 +109,7 @@ impl MojangRetriever {
             .map_err(|e| anyhow!("Failed to fetch profile from Mojang: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "Mojang API returned error: {}",
-                response.status()
-            ));
+            return Err(anyhow!("Mojang API returned error: {}", response.status()));
         }
 
         response
@@ -239,21 +239,16 @@ impl TextureRetriever for MojangRetriever {
         }
     }
 
-    async fn get_texture_bytes_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<RetrievedTextureBytes>> {
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
         // Mojang textures follow the pattern: https://textures.minecraft.net/texture/SHA256_HASH
         let url = format!("https://textures.minecraft.net/texture/{}", hash);
-        
+
         match download_file_from_url(&url).await? {
-            Some(bytes) => {
-                Ok(Some(RetrievedTextureBytes {
-                    hash: hash.to_string(),
-                    bytes,
-                    metadata: None,
-                }))
-            }
+            Some(bytes) => Ok(Some(RetrievedTextureBytes {
+                hash: hash.to_string(),
+                bytes,
+                metadata: None,
+            })),
             None => Ok(None),
         }
     }

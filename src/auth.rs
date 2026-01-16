@@ -23,14 +23,16 @@ pub fn extract_jwt(headers: &HeaderMap) -> Result<String> {
 }
 
 pub fn decode_key(public_key: &str) -> Result<DecodingKey> {
-    let key = format!("-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----", public_key);
+    let key = format!(
+        "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----",
+        public_key
+    );
     DecodingKey::from_ec_pem(key.as_bytes())
         .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))
 }
 
 /// Decode and validate JWT token, returning user UUID
 pub fn validate_jwt(token: &str, public_key: &DecodingKey) -> Result<Uuid> {
-
     let mut validation = Validation::new(Algorithm::ES256);
     validation.validate_exp = true;
 
@@ -75,11 +77,19 @@ where
             })?
             .clone();
 
-        let token = extract_jwt(&parts.headers)
-            .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)))?;
+        let token = extract_jwt(&parts.headers).map_err(|e| {
+            (
+                StatusCode::UNAUTHORIZED,
+                format!("Authentication failed: {}", e),
+            )
+        })?;
 
-        let uuid = validate_jwt(&token, &public_key)
-            .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)))?;
+        let uuid = validate_jwt(&token, &public_key).map_err(|e| {
+            (
+                StatusCode::UNAUTHORIZED,
+                format!("Authentication failed: {}", e),
+            )
+        })?;
 
         Ok(AuthUser(uuid))
     }
@@ -110,7 +120,10 @@ where
             .headers
             .get("authorization")
             .ok_or_else(|| {
-                (StatusCode::UNAUTHORIZED, "Missing authorization header".to_string())
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "Missing authorization header".to_string(),
+                )
             })?
             .to_str()
             .map_err(|_| {
@@ -133,7 +146,13 @@ where
         let admin_token = parts
             .extensions
             .get::<String>()
-            .and_then(|t| if t.starts_with("admin_token:") { Some(t.clone()) } else { None })
+            .and_then(|t| {
+                if t.starts_with("admin_token:") {
+                    Some(t.clone())
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -142,7 +161,9 @@ where
             })?;
 
         // Extract the actual token value (remove "admin_token:" prefix)
-        let expected_token = admin_token.strip_prefix("admin_token:").unwrap_or(&admin_token);
+        let expected_token = admin_token
+            .strip_prefix("admin_token:")
+            .unwrap_or(&admin_token);
 
         if token != expected_token {
             return Err((StatusCode::UNAUTHORIZED, "Invalid admin token".to_string()));

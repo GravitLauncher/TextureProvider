@@ -6,10 +6,7 @@ use uuid::Uuid;
 /// Utility function to download a file from a URL
 /// Returns the file bytes or None if the download fails
 pub async fn download_file_from_url(url: &str) -> Result<Option<Vec<u8>>> {
-    let response = reqwest::Client::new()
-        .get(url)
-        .send()
-        .await?;
+    let response = reqwest::Client::new().get(url).send().await?;
 
     if !response.status().is_success() {
         return Ok(None);

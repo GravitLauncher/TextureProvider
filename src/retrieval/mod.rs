@@ -1,14 +1,14 @@
 pub mod backend;
 pub mod chain;
+pub mod default_skin;
 pub mod mojang;
 pub mod storage_retriever;
-pub mod default_skin;
 
 pub use backend::{download_file_from_url, TextureRetriever};
 pub use chain::ChainRetriever;
+pub use default_skin::{DefaultSkinRetriever, EmbeddedDefaultSkinRetriever};
 pub use mojang::MojangRetriever;
 pub use storage_retriever::StorageRetriever;
-pub use default_skin::{DefaultSkinRetriever, EmbeddedDefaultSkinRetriever};
 
 use crate::config::{Config, RetrievalType};
 use std::sync::Arc;
@@ -36,7 +36,9 @@ pub fn create_retriever(
 
         let handlers: Vec<Arc<dyn TextureRetriever>> = chain_types
             .iter()
-            .map(|retrieval_type| create_retriever_by_type(retrieval_type, &config, storage.clone(), db.clone()))
+            .map(|retrieval_type| {
+                create_retriever_by_type(retrieval_type, &config, storage.clone(), db.clone())
+            })
             .collect();
 
         tracing::info!(
@@ -57,7 +59,10 @@ fn create_single_retriever(
     storage: Arc<dyn crate::storage::StorageBackend>,
     db: sqlx::PgPool,
 ) -> Arc<dyn TextureRetriever> {
-    tracing::info!("Creating single retriever of type: {:?}", config.retrieval_type);
+    tracing::info!(
+        "Creating single retriever of type: {:?}",
+        config.retrieval_type
+    );
     create_retriever_by_type(&config.retrieval_type, config, storage, db)
 }
 

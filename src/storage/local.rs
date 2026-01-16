@@ -14,7 +14,7 @@ impl LocalStorage {
         let storage_path = config
             .local_storage_path
             .expect("Local storage path must be configured for Local storage");
-        
+
         LocalStorage {
             storage_path: PathBuf::from(storage_path),
             base_url: config.base_url,
@@ -30,7 +30,7 @@ impl StorageBackend for LocalStorage {
 
         let file_name = format!("{}", hash);
         let file_path = self.storage_path.join(&file_name);
-        
+
         tokio::fs::write(&file_path, bytes).await?;
 
         Ok(self.generate_url(hash, extension))
@@ -39,17 +39,13 @@ impl StorageBackend for LocalStorage {
     async fn get_file(&self, hash: &str, _extension: &str) -> Result<Vec<u8>> {
         let file_name = format!("{}", hash);
         let file_path = self.storage_path.join(&file_name);
-        
-        tokio::fs::read(&file_path).await.map_err(|e| {
-            anyhow::anyhow!("Failed to read file {}: {}", file_path.display(), e)
-        })
+
+        tokio::fs::read(&file_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", file_path.display(), e))
     }
 
     fn generate_url(&self, hash: &str, _extension: &str) -> String {
-        format!(
-            "{}/{}",
-            self.base_url.trim_end_matches('/'),
-            hash
-        )
+        format!("{}/{}", self.base_url.trim_end_matches('/'), hash)
     }
 }

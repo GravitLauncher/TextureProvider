@@ -1,4 +1,6 @@
-use super::backend::{download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever};
+use super::backend::{
+    download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever,
+};
 use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -16,9 +18,10 @@ impl DefaultSkinRetriever {
     pub fn new() -> Self {
         // The official default Steve skin from Minecraft
         let default_steve_url = "http://textures.minecraft.net/texture/1a4af718455d58aab3011401517e43cb6f84b5f9cbd717f8df0334e0b88b8ecf".to_string();
-        
+
         // Pre-computed hash of the default Steve skin
-        let default_steve_hash = "1a4af718455d58aab3011401517e43cb6f84b5f9cbd717f8df0334e0b88b8ecf".to_string();
+        let default_steve_hash =
+            "1a4af718455d58aab3011401517e43cb6f84b5f9cbd717f8df0334e0b88b8ecf".to_string();
 
         DefaultSkinRetriever {
             default_steve_url,
@@ -75,21 +78,16 @@ impl TextureRetriever for DefaultSkinRetriever {
         Ok(None)
     }
 
-    async fn get_texture_bytes_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<RetrievedTextureBytes>> {
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
         // Check if the requested hash matches our default skin
         if hash == self.default_steve_hash {
             // Download from the Mojang URL
             match download_file_from_url(&self.default_steve_url).await? {
-                Some(bytes) => {
-                    Ok(Some(RetrievedTextureBytes {
-                        hash: self.default_steve_hash.clone(),
-                        bytes,
-                        metadata: None,
-                    }))
-                }
+                Some(bytes) => Ok(Some(RetrievedTextureBytes {
+                    hash: self.default_steve_hash.clone(),
+                    bytes,
+                    metadata: None,
+                })),
                 None => Ok(None),
             }
         } else {
@@ -116,7 +114,7 @@ impl EmbeddedDefaultSkinRetriever {
     /// You would embed the default skin bytes in the binary
     pub fn new(default_skin_data: Vec<u8>, base_url: String) -> Self {
         use sha2::{Digest, Sha256};
-        
+
         let mut hasher = Sha256::new();
         hasher.update(&default_skin_data);
         let hash = hex::encode(hasher.finalize());
@@ -148,16 +146,14 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
                     self.base_url,
                     self.default_skin_hash.clone()
                 );
-                
+
                 Ok(Some(RetrievedTexture {
                     url,
                     hash: self.default_skin_hash.clone(),
                     metadata: None,
                 }))
             }
-            TextureType::CAPE => {
-                Ok(None)
-            }
+            TextureType::CAPE => Ok(None),
         }
     }
 
@@ -167,23 +163,16 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
         texture_type: TextureType,
     ) -> Result<Option<RetrievedTextureBytes>> {
         match texture_type {
-            TextureType::SKIN => {
-                Ok(Some(RetrievedTextureBytes {
-                    hash: self.default_skin_hash.clone(),
-                    bytes: self.default_skin_data.clone(),
-                    metadata: None,
-                }))
-            }
-            TextureType::CAPE => {
-                Ok(None)
-            }
+            TextureType::SKIN => Ok(Some(RetrievedTextureBytes {
+                hash: self.default_skin_hash.clone(),
+                bytes: self.default_skin_data.clone(),
+                metadata: None,
+            })),
+            TextureType::CAPE => Ok(None),
         }
     }
 
-    async fn get_texture_bytes_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<RetrievedTextureBytes>> {
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
         // Check if the requested hash matches our embedded default skin
         if hash == self.default_skin_hash {
             Ok(Some(RetrievedTextureBytes {
