@@ -1,0 +1,53 @@
+RESTful web service for uploading png files locally or to S3 storage
+File names correspond to their SHA256 hash
+All parameters must be in env
+
+Technology stack:
+- Axom Framework
+- PostgreSQL
+
+Endpoints:
+- GET /get/{uuid}
+
+{
+  "SKIN": {
+    "url": "http://example.com/SKIN_HASH.png",
+    "digest": "SHA256 HASH (HEX)",
+    "metadata": {
+      "model": "slim"
+    }
+  },
+  "CAPE": {
+    "url": "http://example.com/CAPE_HASH.png",
+    "digest": "SHA256 HASH (HEX)"
+  }
+}
+
+- GET /get/{uuid}/{SKIN|CAPE}
+
+{
+    "url": "http://example.com/SKIN_HASH.png",
+    "digest": "SHA256 HASH (HEX)",
+    "metadata": {
+      "model": "slim"
+    }
+}
+
+- POST /upload
+
+form/multipart
+
+JWT-based auth: ES256 key, header `Authentification Bearer JWT_TOKEN`, user uuid in `uuid` claim
+
+file - png file
+options
+
+```
+{
+  "modelSlim": true
+}
+```
+
+- GET /download/{SKIN|CAPE}/{uuid}
+
+File content of SKIN/CAPE

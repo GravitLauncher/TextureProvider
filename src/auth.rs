@@ -1,0 +1,97 @@
+use crate::models::JwtClaims;
+use anyhow::Result;
+use axum::{
+    extract::Request,
+    http::{HeaderMap, StatusCode},
+    middleware::Next,
+    response::Response,
+};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use uuid::Uuid;
+
+/// Extract and validate JWT from Authorization header
+pub fn extract_jwt(headers: &HeaderMap, public_key: &str) -> Result<String> {
+    let auth_header = headers
+        .get("authorization")
+        .ok_or_else(|| anyhow::anyhow!("Missing authorization header"))?
+        .to_str()
+        .map_err(|_| anyhow::anyhow!("Invalid authorization header"))?;
+
+    if !auth_header.starts_with("Bearer ") {
+        return Err(anyhow::anyhow!("Invalid authorization header format"));
+    }
+
+    let token = auth_header[7..].to_string();
+    Ok(token)
+}
+
+/// Decode and validate JWT token, returning user UUID
+pub fn validate_jwt(token: &str, public_key: &str) -> Result<Uuid> {
+    let key = format!("-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----", public_key);
+    let decoding_key = DecodingKey::from_ec_pem(key.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))?;
+
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.validate_exp = true;
+
+    let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)
+        .map_err(|e| anyhow::anyhow!("Invalid JWT token: {}", e))?;
+
+    let uuid = Uuid::parse_str(&token_data.claims.uuid)
+        .map_err(|e| anyhow::anyhow!("Invalid UUID in token: {}", e))?;
+
+    Ok(uuid)
+}
+
+/// Middleware to authenticate requests
+pub async fn auth_middleware(
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // Get the public key from app state (will be stored in extensions)
+    // For now, we'll extract it later in the handler
+    Ok(next.run(request).await)
+}
+
+/// Extract user UUID from validated JWT
+pub struct AuthUser(pub Uuid);
+
+impl std::fmt::Debug for AuthUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AuthUser").field(&self.0).finish()
+    }
+}
+
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        // Get public key from request extensions (set by middleware)
+        let public_key = parts
+            .extensions
+            .get::<String>()
+            .ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Public key not found in state".to_string(),
+                )
+            })?
+            .clone();
+
+        let token = extract_jwt(&parts.headers, &public_key)
+            .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)))?;
+
+        let uuid = validate_jwt(&token, &public_key)
+            .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)))?;
+
+        Ok(AuthUser(uuid))
+    }
+}
