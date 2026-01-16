@@ -10,6 +10,7 @@ use axum::{
     http::{header, StatusCode},
     response::{IntoResponse, Json, Response},
 };
+use jsonwebtoken::DecodingKey;
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub db: PgPool,
     pub storage: Arc<dyn StorageBackend>,
     pub retriever: Arc<dyn TextureRetriever>,
+    pub public_key : Arc<DecodingKey>,
     pub config: Config,
 }
 

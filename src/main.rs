@@ -19,6 +19,8 @@ use storage::create_storage;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::auth::decode_key;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env file
@@ -65,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
         storage,
         retriever,
         config: config.clone(),
+        public_key: Arc::new(decode_key(&config.jwt_public_key)?)
     };
 
     // Build our application with routes
@@ -104,6 +107,6 @@ async fn add_public_key_to_state(
     // Add public key to request extensions so it can be accessed by AuthUser extractor
     request
         .extensions_mut()
-        .insert(state.config.jwt_public_key.clone());
+        .insert(state.public_key.clone());
     next.run(request).await
 }

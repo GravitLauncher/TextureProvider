@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::models::JwtClaims;
 use anyhow::Result;
 use axum::{
@@ -10,7 +12,7 @@ use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use uuid::Uuid;
 
 /// Extract and validate JWT from Authorization header
-pub fn extract_jwt(headers: &HeaderMap, public_key: &str) -> Result<String> {
+pub fn extract_jwt(headers: &HeaderMap) -> Result<String> {
     let auth_header = headers
         .get("authorization")
         .ok_or_else(|| anyhow::anyhow!("Missing authorization header"))?
@@ -25,33 +27,25 @@ pub fn extract_jwt(headers: &HeaderMap, public_key: &str) -> Result<String> {
     Ok(token)
 }
 
-/// Decode and validate JWT token, returning user UUID
-pub fn validate_jwt(token: &str, public_key: &str) -> Result<Uuid> {
+pub fn decode_key(public_key: &str) -> Result<DecodingKey> {
     let key = format!("-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----", public_key);
-    let decoding_key = DecodingKey::from_ec_pem(key.as_bytes())
-        .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))?;
+    Ok(DecodingKey::from_ec_pem(key.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))?)
+}
+
+/// Decode and validate JWT token, returning user UUID
+pub fn validate_jwt(token: &str, public_key: &DecodingKey) -> Result<Uuid> {
 
     let mut validation = Validation::new(Algorithm::ES256);
     validation.validate_exp = true;
 
-    let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)
+    let token_data = decode::<JwtClaims>(token, &public_key, &validation)
         .map_err(|e| anyhow::anyhow!("Invalid JWT token: {}", e))?;
 
     let uuid = Uuid::parse_str(&token_data.claims.uuid)
         .map_err(|e| anyhow::anyhow!("Invalid UUID in token: {}", e))?;
 
     Ok(uuid)
-}
-
-/// Middleware to authenticate requests
-pub async fn auth_middleware(
-    headers: HeaderMap,
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    // Get the public key from app state (will be stored in extensions)
-    // For now, we'll extract it later in the handler
-    Ok(next.run(request).await)
 }
 
 /// Extract user UUID from validated JWT
@@ -77,7 +71,7 @@ where
         // Get public key from request extensions (set by middleware)
         let public_key = parts
             .extensions
-            .get::<String>()
+            .get::<Arc<DecodingKey>>()
             .ok_or_else(|| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -86,7 +80,7 @@ where
             })?
             .clone();
 
-        let token = extract_jwt(&parts.headers, &public_key)
+        let token = extract_jwt(&parts.headers)
             .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)))?;
 
         let uuid = validate_jwt(&token, &public_key)
