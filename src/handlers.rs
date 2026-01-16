@@ -1,4 +1,4 @@
-use crate::auth::AuthUser;
+use crate::auth::{AuthAdmin, AuthUser};
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
 use crate::retrieval::TextureRetriever;
@@ -280,4 +280,190 @@ pub async fn serve_texture_file(
 /// Check if bytes represent a PNG file
 fn is_png(bytes: &[u8]) -> bool {
     bytes.len() >= 8 && bytes[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+/// POST /api/upload/:type - Upload a texture for any user (admin only)
+/// Requires admin bearer token. User UUID is provided in the "user" form field.
+pub async fn admin_upload_texture(
+    State(state): State<AppState>,
+    AuthAdmin: AuthAdmin,
+    Path(texture_type_str): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<TextureResponse>, (StatusCode, String)> {
+    let texture_type: TextureType = texture_type_str
+        .parse()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid texture type: {}", e)))?;
+    
+    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut options: Option<UploadOptions> = None;
+    let mut user_uuid: Option<Uuid> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid multipart data: {}", e)))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+
+        match name.as_str() {
+            "file" => {
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e)))?;
+
+                // Validate PNG
+                if !is_png(&data) {
+                    return Err((StatusCode::BAD_REQUEST, "File must be a PNG image".to_string()));
+                }
+
+                file_bytes = Some(data.to_vec());
+            }
+            "options" => {
+                let json_str = field
+                    .text()
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read options: {}", e)))?;
+                options = Some(serde_json::from_str(&json_str).map_err(|e| {
+                    (StatusCode::BAD_REQUEST, format!("Invalid options JSON: {}", e))
+                })?);
+            }
+            "user" => {
+                let uuid_str = field
+                    .text()
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read user UUID: {}", e)))?;
+                user_uuid = Some(Uuid::parse_str(&uuid_str).map_err(|e| {
+                    (StatusCode::BAD_REQUEST, format!("Invalid user UUID: {}", e))
+                })?);
+            }
+            _ => {}
+        }
+    }
+
+    let user_uuid = user_uuid
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "User UUID not provided".to_string()))?;
+
+    let file_bytes = file_bytes
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
+
+    let options = options.unwrap_or(UploadOptions { modelSlim: false });
+
+    // Calculate hash
+    let hash = state.storage.calculate_hash(&file_bytes);
+
+    // Store file with proper extension
+    let file_url = state
+        .storage
+        .store_file(file_bytes.clone(), &hash, texture_type.file_extension())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store file: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to store file".to_string())
+        })?;
+
+    // Prepare metadata
+    let metadata = if options.modelSlim {
+        Some(serde_json::json!({ "model": "slim" }))
+    } else {
+        None
+    };
+
+    // Insert or update in database
+    sqlx::query!(
+        r#"
+        INSERT INTO textures (user_uuid, texture_type, file_hash, file_url, metadata)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_uuid, texture_type)
+        DO UPDATE SET file_hash = $3, file_url = $4, metadata = $5, updated_at = NOW()
+        "#,
+        user_uuid,
+        texture_type.to_string(),
+        hash,
+        file_url,
+        metadata
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to save texture: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save texture".to_string())
+    })?;
+
+    Ok(Json(TextureResponse {
+        url: file_url,
+        digest: hash,
+        metadata: if options.modelSlim {
+            Some(TextureMetadata {
+                model: Some("slim".to_string()),
+            })
+        } else {
+            None
+        },
+    }))
+}
+
+/// GET /download/:hash - Download skin by hash
+/// Tries to get from storage first, then falls back to EmbeddedDefaultSkinRetriever if applicable
+pub async fn download_by_hash(
+    State(state): State<AppState>,
+    Path(hash): Path<String>,
+) -> Result<Response<Body>, (StatusCode, String)> {
+    // First, try to get from storage
+    match state.storage.get_file(&hash, "png").await {
+        Ok(file_bytes) => {
+            return Ok((
+                [(header::CONTENT_TYPE, "image/png")],
+                file_bytes,
+            ).into_response());
+        }
+        Err(e) => {
+            tracing::debug!("File not found in storage for hash {}: {}", hash, e);
+            // Continue to fallback
+        }
+    }
+
+    // Check if this is the default skin hash
+    // Try to check database for a texture with this hash
+    let texture_record = sqlx::query!(
+        r#"
+        SELECT user_uuid, texture_type
+        FROM textures
+        WHERE file_hash = $1
+        LIMIT 1
+        "#,
+        hash
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to query database: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database query failed".to_string())
+    })?;
+
+    if let Some(record) = texture_record {
+        // If we have a record, use the retriever to get the texture
+        let texture_type: TextureType = record.texture_type.parse().map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Invalid texture type in database: {}", e))
+        })?;
+
+        match state.retriever.get_texture_bytes(record.user_uuid, texture_type).await {
+            Ok(Some(retrieved)) => {
+                return Ok((
+                    [(header::CONTENT_TYPE, "image/png")],
+                    retrieved.bytes,
+                ).into_response());
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!("Failed to retrieve texture: {}", e);
+            }
+        }
+    }
+
+    // If all attempts fail, return 404
+    Err((
+        StatusCode::NOT_FOUND,
+        format!("Texture not found for hash: {}", hash),
+    ))
 }

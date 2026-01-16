@@ -16,6 +16,7 @@ pub struct Config {
     pub s3_access_key: Option<String>,
     pub s3_secret_key: Option<String>,
     pub server_port: u16,
+    pub admin_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -91,6 +92,7 @@ impl Config {
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse()
                 .map_err(|e| anyhow::anyhow!("Invalid SERVER_PORT: {}", e))?,
+            admin_token: env::var("ADMIN_TOKEN").ok(),
         })
     }
 

@@ -75,7 +75,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/get/:uuid", get(handlers::get_textures))
         .route("/get/:uuid/:texture_type", get(handlers::get_texture))
         .route("/upload/:texture_type", post(handlers::upload_texture))
+        .route("/api/upload/:type", post(handlers::admin_upload_texture))
         .route("/download/:texture_type/:uuid", get(handlers::download_texture))
+        .route("/download/:hash", get(handlers::download_by_hash))
         .route("/files/:hash.:ext", get(handlers::serve_texture_file))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -99,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Middleware to add JWT public key to request state
+/// Middleware to add JWT public key and admin token to request state
 async fn add_public_key_to_state(
     State(state): State<AppState>,
     mut request: axum::http::Request<axum::body::Body>,
@@ -109,5 +111,13 @@ async fn add_public_key_to_state(
     request
         .extensions_mut()
         .insert(state.public_key.clone());
+    
+    // Add admin token to request extensions if configured
+    if let Some(ref admin_token) = state.config.admin_token {
+        request
+            .extensions_mut()
+            .insert(format!("admin_token:{}", admin_token));
+    }
+    
     next.run(request).await
 }

@@ -84,3 +84,70 @@ where
         Ok(AuthUser(uuid))
     }
 }
+
+/// Extract admin token from Authorization header
+/// Marker struct to indicate admin authentication is required
+pub struct AuthAdmin;
+
+impl std::fmt::Debug for AuthAdmin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AuthAdmin").finish()
+    }
+}
+
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthAdmin
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let auth_header = parts
+            .headers
+            .get("authorization")
+            .ok_or_else(|| {
+                (StatusCode::UNAUTHORIZED, "Missing authorization header".to_string())
+            })?
+            .to_str()
+            .map_err(|_| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "Invalid authorization header".to_string(),
+                )
+            })?;
+
+        if !auth_header.starts_with("Bearer ") {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                "Invalid authorization header format".to_string(),
+            ));
+        }
+
+        let token = auth_header[7..].to_string();
+
+        // Get admin token from request extensions (set by middleware)
+        let admin_token = parts
+            .extensions
+            .get::<String>()
+            .and_then(|t| if t.starts_with("admin_token:") { Some(t.clone()) } else { None })
+            .ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Admin token not configured".to_string(),
+                )
+            })?;
+
+        // Extract the actual token value (remove "admin_token:" prefix)
+        let expected_token = admin_token.strip_prefix("admin_token:").unwrap_or(&admin_token);
+
+        if token != expected_token {
+            return Err((StatusCode::UNAUTHORIZED, "Invalid admin token".to_string()));
+        }
+
+        Ok(AuthAdmin)
+    }
+}

@@ -150,14 +150,14 @@ Get all textures for a user.
 ```json
 {
   "SKIN": {
-    "url": "http://example.com/SKIN_HASH.png",
+    "url": "http://example.com/SKIN_HASH",
     "digest": "SHA256_HASH",
     "metadata": {
       "model": "slim"
     }
   },
   "CAPE": {
-    "url": "http://example.com/CAPE_HASH.png",
+    "url": "http://example.com/CAPE_HASH",
     "digest": "SHA256_HASH"
   }
 }
@@ -170,7 +170,7 @@ Get a specific texture type for a user.
 **Response:**
 ```json
 {
-  "url": "http://example.com/SKIN_HASH.png",
+  "url": "http://example.com/SKIN_HASH",
   "digest": "SHA256_HASH",
   "metadata": {
     "model": "slim"
@@ -200,7 +200,7 @@ curl -X POST http://localhost:3000/upload \
 **Response:**
 ```json
 {
-  "url": "http://localhost:3000/SKIN_HASH.png",
+  "url": "http://localhost:3000/SKIN_HASH",
   "digest": "SHA256_HASH",
   "metadata": {
     "model": "slim"
