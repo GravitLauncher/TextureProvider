@@ -2,7 +2,7 @@
 FROM rust:1.92-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN cargo build --release
 FROM alpine:3.20
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates libgcc
+RUN apk add --no-cache ca-certificates libgcc openssl-libs-static
 
 # Create a non-root user
 RUN addgroup -g 1000 appuser && \
