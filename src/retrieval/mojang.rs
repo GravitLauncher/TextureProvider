@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::backend::{
     download_file_from_url, RetrievedTexture, RetrievedTextureBytes, TextureRetriever,
 };
@@ -5,7 +7,9 @@ use crate::config::Config;
 use crate::models::{TextureMetadata, TextureType};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Retrieves textures from the Mojang API
@@ -14,6 +18,8 @@ pub struct MojangRetriever {
     client: reqwest::Client,
     api_base_url: String,
     session_server_url: String,
+    use_database_username_in_mojang_requests: bool,
+    db: Option<PgPool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,28 +38,43 @@ struct ProfileProperty {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TexturesPayload {
-    textures: serde_json::Value,
+    textures: HashMap<String, TextureData>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TextureData {
     url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<TextureMeta>,
+    metadata: Option<TextureMetadata>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct TextureMeta {
-    model: String,
+pub fn extract_hash_from_url(url: &str) -> Option<&str> {
+    // Remove query parameters
+    let url = url.split('?').next()?;
+
+    // Get last path segment
+    let last_segment = url.rsplit('/').next()?;
+
+    // Remove file extension if present
+    let hash = last_segment.split('.').next()?;
+
+    if hash.is_empty() {
+        None
+    } else {
+        Some(hash)
+    }
 }
 
 impl MojangRetriever {
-    pub fn new(_config: Config) -> Self {
+    pub fn new(config: Config, db: Option<PgPool>) -> Self {
         MojangRetriever {
             client: reqwest::Client::new(),
             api_base_url: "https://api.mojang.com".to_string(),
             session_server_url: "https://sessionserver.mojang.com/session/minecraft/profile"
                 .to_string(),
+            use_database_username_in_mojang_requests: config
+                .use_database_username_in_mojang_requests,
+            db: db,
         }
     }
 
@@ -130,23 +151,13 @@ impl MojangRetriever {
 
         Ok(payload)
     }
-}
 
-#[async_trait]
-impl TextureRetriever for MojangRetriever {
-    async fn get_texture(
+    async fn get_textures_from_mojang(
         &self,
-        user_uuid: Uuid,
-        texture_type: TextureType,
-    ) -> Result<Option<RetrievedTexture>> {
-        // Only support SKIN and CAPE from Mojang
-        match texture_type {
-            TextureType::SKIN | TextureType::CAPE => {}
-            _ => return Ok(None),
-        }
-
+        fetch_uuid: Uuid,
+    ) -> Result<HashMap<String, RetrievedTexture>> {
         // Fetch profile from Mojang
-        let profile = self.fetch_profile(user_uuid).await?;
+        let profile = self.fetch_profile(fetch_uuid).await?;
 
         // Find textures property
         let textures_property = profile
@@ -158,63 +169,46 @@ impl TextureRetriever for MojangRetriever {
         // Decode the base64-encoded textures
         let payload = Self::decode_textures_payload(&textures_property.value)?;
 
-        // Extract the specific texture
-        let texture_key = match texture_type {
+        Ok(payload
+            .textures
+            .iter()
+            .map(|(k, v)| {
+                let e = RetrievedTexture {
+                    url: v.url.to_owned(),
+                    hash: extract_hash_from_url(&v.url).map_or("", |e| e).to_owned(),
+                    metadata: v.metadata.to_owned(),
+                };
+                (k.to_owned(), e)
+            })
+            .collect())
+    }
+
+    async fn get_texture_from_mojang(
+        &self,
+        fetch_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTexture>> {
+        // Only support SKIN and CAPE from Mojang
+        match texture_type {
+            TextureType::SKIN | TextureType::CAPE => {}
+            _ => return Ok(None),
+        }
+
+        let mut textures = self.get_textures_from_mojang(fetch_uuid).await?;
+
+        let key = match texture_type {
             TextureType::SKIN => "SKIN",
             TextureType::CAPE => "CAPE",
             _ => return Ok(None),
         };
 
-        let texture_obj = payload
-            .textures
-            .get(texture_key.to_lowercase())
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| anyhow!("Texture {} not found in profile", texture_key))?;
-
-        let texture_data: TextureData = serde_json::from_value(serde_json::to_value(texture_obj)?)?;
-
-        // Extract metadata if present
-        let metadata = texture_data.metadata.map(|m| TextureMetadata {
-            model: Some(m.model),
-        });
-
-        // Download the texture to calculate hash
-        let response = self
-            .client
-            .get(&texture_data.url)
-            .send()
-            .await
-            .map_err(|e| anyhow!("Failed to download texture: {}", e))?;
-
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| anyhow!("Failed to read texture bytes: {}", e))?;
-
-        // Calculate hash
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let hash = hex::encode(hasher.finalize());
-
-        Ok(Some(RetrievedTexture {
-            url: texture_data.url,
-            hash,
-            metadata,
-        }))
+        Ok(textures.remove(key))
     }
 
-    async fn get_texture_bytes(
+        async fn get_texture_bytes_from_mojang(
         &self,
-        user_uuid: Uuid,
-        texture_type: TextureType,
-    ) -> Result<Option<RetrievedTextureBytes>> {
-        // For Mojang retriever, we need to download the texture bytes
-        // First get the texture metadata
-        let texture = self.get_texture(user_uuid, texture_type).await?;
-
-        match texture {
-            Some(texture) => {
+        texture: &RetrievedTexture,
+    ) -> Result<RetrievedTextureBytes> {
                 // Download the texture bytes
                 let response = self
                     .client
@@ -228,12 +222,67 @@ impl TextureRetriever for MojangRetriever {
                     .await
                     .map_err(|e| anyhow!("Failed to read texture bytes: {}", e))?
                     .to_vec();
-
-                Ok(Some(RetrievedTextureBytes {
-                    hash: texture.hash,
+        Ok(RetrievedTextureBytes {
+                    hash: texture.hash.to_owned(),
                     bytes,
-                    metadata: texture.metadata,
-                }))
+                    metadata: texture.metadata.to_owned(),
+                })
+    }
+}
+
+#[async_trait]
+impl TextureRetriever for MojangRetriever {
+    async fn get_texture(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTexture>> {
+        let mut fetch_uuid = user_uuid;
+
+        if self.use_database_username_in_mojang_requests {
+            if let Some(db) = &self.db {
+                match sqlx::query!(
+                    r#"
+                    SELECT username
+                    FROM username_mappings
+                    WHERE user_uuid = $1
+                    LIMIT 1
+                    "#,
+                    user_uuid
+                ).fetch_optional(db).await {
+                    Ok(e) => {
+                        if let Some(record) = e {
+                            fetch_uuid = self
+                                .resolve_username_to_uuid(&record.username)
+                                .await
+                                .map_err(|_| anyhow!("Failed to lookup username from mojang"))?
+                                .ok_or(anyhow!("Failed to lookup username from mojang"))?;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to lookup username: {}", e);
+                        return Err(e)
+                            .map_err(|_| anyhow!("Failed to lookup username from mojang"));
+                    }
+                };
+            }
+        }
+
+        self.get_texture_from_mojang(fetch_uuid, texture_type).await
+    }
+
+    async fn get_texture_bytes(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // For Mojang retriever, we need to download the texture bytes
+        // First get the texture metadata
+        let texture = self.get_texture(user_uuid, texture_type).await?;
+
+        match texture {
+            Some(texture) => {
+                Ok(Some(self.get_texture_bytes_from_mojang(&texture).await?))
             }
             None => Ok(None),
         }
@@ -273,7 +322,12 @@ impl TextureRetriever for MojangRetriever {
             None => return Ok(None),
         };
 
-        // Now get the texture bytes using the UUID
-        self.get_texture_bytes(uuid, texture_type).await
+        let texture = self.get_texture_from_mojang(uuid, texture_type).await?;
+        match texture {
+            Some(e) => {
+                Ok(Some(self.get_texture_bytes_from_mojang(&e).await?))
+            },
+            None => Ok(None),
+        }
     }
 }

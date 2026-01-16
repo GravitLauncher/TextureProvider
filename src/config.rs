@@ -19,6 +19,7 @@ pub struct Config {
     pub admin_token: Option<String>,
     pub username_cache_seconds: u64,
     pub hash_cache_seconds: u64,
+    pub use_database_username_in_mojang_requests: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -105,6 +106,10 @@ impl Config {
                 .unwrap_or_else(|_| "1209600".to_string()) // 14 days default
                 .parse()
                 .map_err(|e| anyhow::anyhow!("Invalid HASH_CACHE_SECONDS: {}", e))?,
+            use_database_username_in_mojang_requests: env::var("USE_DATABASE_USERNAME_IN_MOJANG_REQUESTS")
+                .unwrap_or_else(|_| "true".to_string()) // 14 days default
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Invalid USE_DATABASE_USERNAME_IN_MOJANG_REQUESTS: {}", e))?,
         })
     }
 

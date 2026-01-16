@@ -80,7 +80,7 @@ fn create_retriever_by_type(
         }
         RetrievalType::Mojang => {
             tracing::debug!("Creating MojangRetriever");
-            Arc::new(MojangRetriever::new(config.clone()))
+            Arc::new(MojangRetriever::new(config.clone(), Some(db)))
         }
         RetrievalType::DefaultSkin => {
             tracing::debug!("Creating DefaultSkinRetriever");
