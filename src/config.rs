@@ -8,6 +8,7 @@ pub struct Config {
     pub base_url: String,
     pub storage_type: StorageType,
     pub retrieval_type: RetrievalType,
+    pub retrieval_chain: Option<Vec<RetrievalType>>,
     pub local_storage_path: Option<String>,
     pub s3_bucket: Option<String>,
     pub s3_region: Option<String>,
@@ -57,6 +58,14 @@ impl std::str::FromStr for RetrievalType {
 
 impl Config {
     pub fn from_env() -> Result<Self, anyhow::Error> {
+        // Parse retrieval_chain from comma-separated list if provided
+        let retrieval_chain = env::var("RETRIEVAL_CHAIN").ok().map(|chain_str| {
+            chain_str
+                .split(',')
+                .map(|s| s.trim().parse::<RetrievalType>())
+                .collect::<Result<Vec<_>, _>>()
+        }).transpose()?;
+
         Ok(Config {
             database_url: env::var("DATABASE_URL")
                 .or_else(|_| env::var("DATABASE_URL"))
@@ -71,6 +80,7 @@ impl Config {
             retrieval_type: env::var("RETRIEVAL_TYPE")
                 .unwrap_or_else(|_| "storage".to_string())
                 .parse()?,
+            retrieval_chain,
             local_storage_path: env::var("LOCAL_STORAGE_PATH").ok(),
             s3_bucket: env::var("S3_BUCKET").ok(),
             s3_region: env::var("S3_REGION").ok(),
