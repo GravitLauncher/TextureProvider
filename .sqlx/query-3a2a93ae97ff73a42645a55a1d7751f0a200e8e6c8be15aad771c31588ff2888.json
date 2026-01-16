@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT file_hash, metadata\n            FROM textures\n            WHERE user_uuid = $1 AND texture_type = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "file_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "3a2a93ae97ff73a42645a55a1d7751f0a200e8e6c8be15aad771c31588ff2888"
+}
