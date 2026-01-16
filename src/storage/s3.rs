@@ -2,7 +2,6 @@ use super::backend::StorageBackend;
 use crate::config::Config;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
 
 pub struct S3Storage {
     bucket: String,

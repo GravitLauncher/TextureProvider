@@ -46,7 +46,7 @@ struct TextureMeta {
 }
 
 impl MojangRetriever {
-    pub fn new(config: Config) -> Self {
+    pub fn new(_config: Config) -> Self {
         MojangRetriever {
             client: reqwest::Client::new(),
             api_base_url: "https://api.mojang.com".to_string(),

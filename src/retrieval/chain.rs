@@ -1,5 +1,5 @@
 use super::backend::{RetrievedTexture, TextureRetriever};
-use crate::models::{TextureMetadata, TextureType};
+use crate::models::TextureType;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;

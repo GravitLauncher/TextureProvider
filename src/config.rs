@@ -101,11 +101,10 @@ impl Config {
                     "LOCAL_STORAGE_PATH must be set for local storage"
                 ));
             }
-        } else if self.storage_type == StorageType::S3 {
-            if self.s3_bucket.is_none() {
+        } else if self.storage_type == StorageType::S3
+            && self.s3_bucket.is_none() {
                 return Err(anyhow::anyhow!("S3_BUCKET must be set for S3 storage"));
             }
-        }
         Ok(())
     }
 }

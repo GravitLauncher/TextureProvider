@@ -2,12 +2,7 @@ use std::sync::Arc;
 
 use crate::models::JwtClaims;
 use anyhow::Result;
-use axum::{
-    extract::Request,
-    http::{HeaderMap, StatusCode},
-    middleware::Next,
-    response::Response,
-};
+use axum::http::{HeaderMap, StatusCode};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use uuid::Uuid;
 
@@ -29,8 +24,8 @@ pub fn extract_jwt(headers: &HeaderMap) -> Result<String> {
 
 pub fn decode_key(public_key: &str) -> Result<DecodingKey> {
     let key = format!("-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----", public_key);
-    Ok(DecodingKey::from_ec_pem(key.as_bytes())
-        .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))?)
+    DecodingKey::from_ec_pem(key.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Failed to create decoding key: {}", e))
 }
 
 /// Decode and validate JWT token, returning user UUID
@@ -39,7 +34,7 @@ pub fn validate_jwt(token: &str, public_key: &DecodingKey) -> Result<Uuid> {
     let mut validation = Validation::new(Algorithm::ES256);
     validation.validate_exp = true;
 
-    let token_data = decode::<JwtClaims>(token, &public_key, &validation)
+    let token_data = decode::<JwtClaims>(token, public_key, &validation)
         .map_err(|e| anyhow::anyhow!("Invalid JWT token: {}", e))?;
 
     let uuid = Uuid::parse_str(&token_data.claims.uuid)
