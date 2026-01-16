@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO username_mappings (user_uuid, username, updated_at)\n        VALUES ($1, $2, NOW())\n        ON CONFLICT (user_uuid, username)\n        DO UPDATE SET updated_at = NOW()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "538e99016da991a0cab148f55045327644de92d6ca17a43d5f43a2a96b1a6aea"
+}
