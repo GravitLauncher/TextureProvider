@@ -158,6 +158,22 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
         }
     }
 
+    async fn get_texture_bytes_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Check if the requested hash matches our embedded default skin
+        if hash == self.default_skin_hash {
+            Ok(Some(RetrievedTextureBytes {
+                hash: self.default_skin_hash.clone(),
+                bytes: self.default_skin_data.clone(),
+                metadata: None,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         matches!(texture_type, TextureType::SKIN)
     }

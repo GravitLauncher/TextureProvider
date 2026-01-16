@@ -135,6 +135,38 @@ impl TextureRetriever for ChainRetriever {
         Ok(None)
     }
 
+    async fn get_texture_bytes_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<RetrievedTextureBytes>> {
+        // Try each handler in order
+        for (index, handler) in self.handlers.iter().enumerate() {
+            match handler.get_texture_bytes_by_hash(hash).await {
+                Ok(Some(texture_bytes)) => {
+                    tracing::debug!(
+                        "Handler {} successfully retrieved texture bytes for hash {}",
+                        index,
+                        hash
+                    );
+                    return Ok(Some(texture_bytes));
+                }
+                Ok(None) => {
+                    // Continue to next handler
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Handler {} failed with error: {}, trying next handler",
+                        index,
+                        e
+                    );
+                    // Continue to next handler on error
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     fn supports_texture_type(&self, texture_type: TextureType) -> bool {
         // Chain supports a texture type if any handler supports it
         self.handlers

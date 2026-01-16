@@ -8,7 +8,7 @@ pub use backend::TextureRetriever;
 pub use chain::ChainRetriever;
 pub use mojang::MojangRetriever;
 pub use storage_retriever::StorageRetriever;
-pub use default_skin::DefaultSkinRetriever;
+pub use default_skin::{DefaultSkinRetriever, EmbeddedDefaultSkinRetriever};
 
 use crate::config::{Config, RetrievalType};
 use std::sync::Arc;

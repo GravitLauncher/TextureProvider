@@ -24,6 +24,14 @@ pub trait TextureRetriever: Send + Sync {
         texture_type: TextureType,
     ) -> Result<Option<RetrievedTextureBytes>>;
 
+    /// Retrieve texture file bytes by hash
+    /// This allows retrievers with embedded data (like EmbeddedDefaultSkinRetriever) to provide bytes
+    /// Returns None if the texture is not available from this retrieval source
+    async fn get_texture_bytes_by_hash(&self, hash: &str) -> Result<Option<RetrievedTextureBytes>> {
+        // Default implementation returns None for backward compatibility
+        Ok(None)
+    }
+
     /// Check if this retriever can provide the given texture type
     fn supports_texture_type(&self, texture_type: TextureType) -> bool;
 }

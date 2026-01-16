@@ -404,7 +404,8 @@ pub async fn admin_upload_texture(
 }
 
 /// GET /download/:hash - Download skin by hash
-/// Tries to get from storage first, then falls back to EmbeddedDefaultSkinRetriever if applicable
+/// Tries to get from storage first, then retriever (including EmbeddedDefaultSkinRetriever),
+/// then falls back to http/https download if applicable
 pub async fn download_by_hash(
     State(state): State<AppState>,
     Path(hash): Path<String>,
@@ -423,8 +424,23 @@ pub async fn download_by_hash(
         }
     }
 
-    // Check if this is the default skin hash
-    // Try to check database for a texture with this hash
+    // Try to get from retriever chain by hash (including EmbeddedDefaultSkinRetriever)
+    match state.retriever.get_texture_bytes_by_hash(&hash).await {
+        Ok(Some(retrieved)) => {
+            return Ok((
+                [(header::CONTENT_TYPE, "image/png")],
+                retrieved.bytes,
+            ).into_response());
+        }
+        Ok(None) => {
+            tracing::debug!("Retriever chain did not provide texture for hash: {}", hash);
+        }
+        Err(e) => {
+            tracing::warn!("Retriever chain error for hash {}: {}", hash, e);
+        }
+    }
+
+    // Check database for a texture with this hash to potentially fetch from URL
     let texture_record = sqlx::query!(
         r#"
         SELECT user_uuid, texture_type, file_url
@@ -442,43 +458,32 @@ pub async fn download_by_hash(
     })?;
 
     if let Some(record) = texture_record {
-        // If we have a record, use the retriever to get the texture
-        let texture_type: TextureType = record.texture_type.parse().map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Invalid texture type in database: {}", e))
-        })?;
-
-        match state.retriever.get_texture_bytes(record.user_uuid, texture_type).await {
-            Ok(Some(retrieved)) => {
-                return Ok((
-                    [(header::CONTENT_TYPE, "image/png")],
-                    retrieved.bytes,
-                ).into_response());
-            }
-            Ok(None) => {}
-            Err(e) => {
-                // We can fetch texture from url
-                if record.file_url.starts_with("http://") || record.file_url.starts_with("https://") {
-                    let res = reqwest::Client::new().get(record.file_url).send().await;
-                    match res {
-                        Ok(response) => {
-                            match response.bytes().await  {
-                                Ok(bytes) => {
-                                    return Ok((
-                                        [(header::CONTENT_TYPE, "image/png")],
-                                        bytes,
-                                        ).into_response());
-                                },
-                                Err(err) => {
-                                    tracing::error!("Failed to download texture: {}", err);
-                                },
-                            }
-                        },
+        // If we have a record with an http/https URL, try to fetch from there
+        if record.file_url.starts_with("http://") || record.file_url.starts_with("https://") {
+            tracing::debug!("Attempting to fetch texture from URL: {}", record.file_url);
+            
+            let res = reqwest::Client::new()
+                .get(&record.file_url)
+                .send()
+                .await;
+            
+            match res {
+                Ok(response) => {
+                    match response.bytes().await {
+                        Ok(bytes) => {
+                            return Ok((
+                                [(header::CONTENT_TYPE, "image/png")],
+                                bytes,
+                            ).into_response());
+                        }
                         Err(err) => {
-                            tracing::error!("Failed to download texture: {}", err);
-                        },
+                            tracing::error!("Failed to download texture from URL: {}", err);
+                        }
                     }
                 }
-                tracing::error!("Failed to retrieve texture: {}", e);
+                Err(err) => {
+                    tracing::error!("Failed to fetch texture from URL: {}", err);
+                }
             }
         }
     }
