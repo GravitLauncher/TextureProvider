@@ -122,9 +122,9 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
         match texture_type {
             TextureType::SKIN => {
                 let url = format!(
-                    "{}/default/skin/{}",
+                    "{}/download/{}",
                     self.base_url,
-                    user_uuid
+                    self.default_skin_hash.clone()
                 );
                 
                 Ok(Some(RetrievedTexture {

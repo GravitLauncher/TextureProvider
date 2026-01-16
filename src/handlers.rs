@@ -3,7 +3,7 @@ use crate::config::Config;
 use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
 use crate::retrieval::TextureRetriever;
 use crate::storage::StorageBackend;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
@@ -427,7 +427,7 @@ pub async fn download_by_hash(
     // Try to check database for a texture with this hash
     let texture_record = sqlx::query!(
         r#"
-        SELECT user_uuid, texture_type
+        SELECT user_uuid, texture_type, file_url
         FROM textures
         WHERE file_hash = $1
         LIMIT 1
@@ -456,6 +456,28 @@ pub async fn download_by_hash(
             }
             Ok(None) => {}
             Err(e) => {
+                // We can fetch texture from url
+                if record.file_url.starts_with("http://") || record.file_url.starts_with("https://") {
+                    let res = reqwest::Client::new().get(record.file_url).send().await;
+                    match res {
+                        Ok(response) => {
+                            match response.bytes().await  {
+                                Ok(bytes) => {
+                                    return Ok((
+                                        [(header::CONTENT_TYPE, "image/png")],
+                                        bytes,
+                                        ).into_response());
+                                },
+                                Err(err) => {
+                                    tracing::error!("Failed to download texture: {}", err);
+                                },
+                            }
+                        },
+                        Err(err) => {
+                            tracing::error!("Failed to download texture: {}", err);
+                        },
+                    }
+                }
                 tracing::error!("Failed to retrieve texture: {}", e);
             }
         }
