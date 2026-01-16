@@ -1,18 +1,29 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
+use std::fmt;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Enum of supported texture types
+/// To add a new texture type:
+/// 1. Add a variant here
+/// 2. Update the TEXTURE_TYPES constant below
+/// 3. The API will automatically handle it
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Copy)]
 pub enum TextureType {
     SKIN,
     CAPE,
+    // Add new texture types here, e.g.:
+    // ELYTRA,
+    // HAT,
 }
 
-impl ToString for TextureType {
-    fn to_string(&self) -> String {
+impl fmt::Display for TextureType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TextureType::SKIN => "SKIN".to_string(),
-            TextureType::CAPE => "CAPE".to_string(),
+            TextureType::SKIN => write!(f, "SKIN"),
+            TextureType::CAPE => write!(f, "CAPE"),
+            // Add display for new types here
         }
     }
 }
@@ -24,7 +35,28 @@ impl std::str::FromStr for TextureType {
         match s.to_uppercase().as_str() {
             "SKIN" => Ok(TextureType::SKIN),
             "CAPE" => Ok(TextureType::CAPE),
-            _ => Err(anyhow::anyhow!("Invalid texture type: {}", s)),
+            // Add parsing for new types here
+            _ => Err(anyhow::anyhow!(
+                "Invalid texture type: {}. Valid types are: {}", 
+                s, 
+                TextureType::all_types().join(", ")
+            )),
+        }
+    }
+}
+
+impl TextureType {
+    /// Get all supported texture types
+    pub fn all_types() -> Vec<&'static str> {
+        vec!["SKIN", "CAPE"] // Add new types here
+    }
+
+    /// Get the file extension for this texture type
+    pub fn file_extension(&self) -> &str {
+        match self {
+            TextureType::SKIN => "png",
+            TextureType::CAPE => "png",
+            // Different types could have different extensions
         }
     }
 }

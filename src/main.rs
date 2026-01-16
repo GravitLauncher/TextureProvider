@@ -13,7 +13,8 @@ use axum::{
 use config::Config;
 use handlers::AppState;
 use std::net::SocketAddr;
-use storage::Storage;
+use std::sync::Arc;
+use storage::create_storage;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -51,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Database connection verified");
 
     // Initialize storage
-    let storage = Storage::new(config.clone());
+    let storage: Arc<dyn storage::StorageBackend> = create_storage(config.clone());
 
     // Build application state
     let state = AppState {

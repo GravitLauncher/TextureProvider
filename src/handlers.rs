@@ -1,21 +1,22 @@
 use crate::auth::AuthUser;
 use crate::config::Config;
 use crate::models::{TextureMetadata, TextureResponse, TexturesResponse, TextureType, UploadOptions};
-use crate::storage::Storage;
+use crate::storage::StorageBackend;
 use anyhow::Result;
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, StatusCode},
     response::{IntoResponse, Json, Response},
 };
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
-    pub storage: Storage,
+    pub storage: Arc<dyn StorageBackend>,
     pub config: Config,
 }
 
@@ -157,12 +158,12 @@ pub async fn upload_texture(
     let options = options.unwrap_or(UploadOptions { modelSlim: false });
 
     // Calculate hash
-    let hash = Storage::calculate_hash(&file_bytes);
+    let hash = state.storage.calculate_hash(&file_bytes);
 
-    // Store file
+    // Store file with proper extension
     let file_url = state
         .storage
-        .store_file(file_bytes.clone(), &hash)
+        .store_file(file_bytes.clone(), &hash, texture_type.file_extension())
         .await
         .map_err(|e| {
             tracing::error!("Failed to store file: {}", e);
@@ -245,7 +246,7 @@ pub async fn download_texture(
     // Get file bytes from storage
     let file_bytes = state
         .storage
-        .get_file(&texture.file_hash)
+        .get_file(&texture.file_hash, texture_type.file_extension())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get file: {}", e);

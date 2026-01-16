@@ -41,11 +41,14 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 thiserror = "1"
 
+# Async traits
+async-trait = "0.1"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15.0"
 
 [features]
-default = []
+default = ["s3"]
 s3 = ["aws-config", "aws-sdk-s3"]

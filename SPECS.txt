@@ -33,7 +33,7 @@ Endpoints:
     }
 }
 
-- POST /upload
+- POST /upload/{type}
 
 form/multipart
 
