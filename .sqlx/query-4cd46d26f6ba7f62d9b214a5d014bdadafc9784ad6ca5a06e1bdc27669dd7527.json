@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT username\n                    FROM username_mappings\n                    WHERE user_uuid = $1\n                    LIMIT 1\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "username",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4cd46d26f6ba7f62d9b214a5d014bdadafc9784ad6ca5a06e1bdc27669dd7527"
+}
