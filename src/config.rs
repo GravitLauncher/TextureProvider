@@ -20,6 +20,7 @@ pub struct Config {
     pub username_cache_seconds: u64,
     pub hash_cache_seconds: u64,
     pub use_database_username_in_mojang_requests: bool,
+    pub cors_allowed_origins: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -75,7 +76,6 @@ impl Config {
 
         Ok(Config {
             database_url: env::var("DATABASE_URL")
-                .or_else(|_| env::var("DATABASE_URL"))
                 .map_err(|_| anyhow::anyhow!("DATABASE_URL must be set"))?,
             jwt_public_key: env::var("JWT_PUBLIC_KEY")
                 .map_err(|_| anyhow::anyhow!("JWT_PUBLIC_KEY must be set"))?,
@@ -110,6 +110,7 @@ impl Config {
                 .unwrap_or_else(|_| "true".to_string()) // 14 days default
                 .parse()
                 .map_err(|e| anyhow::anyhow!("Invalid USE_DATABASE_USERNAME_IN_MOJANG_REQUESTS: {}", e))?,
+            cors_allowed_origins: env::var("CORS_ALLOWED_ORIGINS").ok(),
         })
     }
 

@@ -38,13 +38,15 @@ impl S3Storage {
         #[cfg(feature = "s3")]
         {
             use aws_config::BehaviorVersion;
-            use aws_sdk_s3::config::Credentials;
+            use aws_sdk_s3::config::{Builder, Credentials, Region};
+            use aws_sdk_s3::Config;
 
-            let mut config_loader = aws_config::defaults(BehaviorVersion::latest());
+            let region = Region::new(self.region.clone());
+            let mut builder = Builder::new().region(region.clone());
 
             // Add credentials if provided
             if let Some(creds) = &self.credentials {
-                config_loader = config_loader.credentials_provider(Credentials::new(
+                builder = builder.credentials_provider(Credentials::new(
                     &creds.access_key,
                     &creds.secret_key,
                     None,
@@ -53,8 +55,20 @@ impl S3Storage {
                 ));
             }
 
-            let config = config_loader.load().await;
-            Ok(aws_sdk_s3::Client::new(&config))
+            // Configure custom endpoint if provided (for S3-compatible services)
+            let config = if let Some(endpoint) = &self.endpoint {
+                // For custom S3-compatible services (MinIO, Wasabi, etc.)
+                builder.endpoint_url(endpoint).build()
+            } else {
+                // Use standard AWS S3 configuration
+                let aws_config = aws_config::defaults(BehaviorVersion::latest())
+                    .region(region)
+                    .load()
+                    .await;
+                builder.build()
+            };
+
+            Ok(aws_sdk_s3::Client::from_conf(config))
         }
 
         #[cfg(not(feature = "s3"))]

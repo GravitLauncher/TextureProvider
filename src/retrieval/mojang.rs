@@ -246,21 +246,32 @@ impl TextureRetriever for MojangRetriever {
                     "#,
                     user_uuid
                 ).fetch_optional(db).await {
-                    Ok(e) => {
-                        if let Some(record) = e {
-                            fetch_uuid = self
-                                .resolve_username_to_uuid(&record.username)
-                                .await
-                                .map_err(|_| anyhow!("Failed to lookup username from mojang"))?
-                                .ok_or(anyhow!("Failed to lookup username from mojang"))?;
+                    Ok(Some(record)) => {
+                        match self.resolve_username_to_uuid(&record.username).await {
+                            Ok(Some(resolved_uuid)) => {
+                                fetch_uuid = resolved_uuid;
+                            }
+                            Ok(None) => {
+                                tracing::warn!(
+                                    "Username '{}' not found in Mojang API, using original UUID",
+                                    record.username
+                                );
+                                // Keep using the original UUID
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to resolve username from Mojang: {}", e);
+                                // Continue with original UUID
+                            }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to lookup username: {}", e);
-                        return Err(e)
-                            .map_err(|_| anyhow!("Failed to lookup username from mojang"));
+                    Ok(None) => {
+                        tracing::debug!("No username mapping found for UUID {}", user_uuid);
                     }
-                };
+                    Err(e) => {
+                        tracing::error!("Failed to lookup username from database: {}", e);
+                        // Continue with original UUID
+                    }
+                }
             }
         }
 

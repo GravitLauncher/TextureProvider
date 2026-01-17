@@ -165,7 +165,23 @@ where
             .strip_prefix("admin_token:")
             .unwrap_or(&admin_token);
 
-        if token != expected_token {
+        // Use constant-time comparison to prevent timing attacks
+        // Convert both tokens to fixed-size arrays for comparison
+        let token_bytes = token.as_bytes();
+        let expected_bytes = expected_token.as_bytes();
+        
+        // Compare lengths first in constant time
+        if token_bytes.len() != expected_bytes.len() {
+            return Err((StatusCode::UNAUTHORIZED, "Invalid admin token".to_string()));
+        }
+        
+        // Compare byte by byte in constant time
+        let mut result = 0u8;
+        for (a, b) in token_bytes.iter().zip(expected_bytes.iter()) {
+            result |= a ^ b;
+        }
+        
+        if result != 0 {
             return Err((StatusCode::UNAUTHORIZED, "Invalid admin token".to_string()));
         }
 

@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use storage::create_storage;
 use tower_http::cors::{Any, CorsLayer};
+use tracing::warn;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::auth::decode_key;
@@ -94,12 +95,7 @@ async fn main() -> anyhow::Result<()> {
             state.clone(),
             add_public_key_to_state,
         ))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        .layer(build_cors_layer(&config))
         .with_state(state);
 
     // Start server
@@ -129,4 +125,44 @@ async fn add_public_key_to_state(
     }
 
     next.run(request).await
+}
+
+/// Build CORS layer based on configuration
+/// If CORS_ALLOWED_ORIGINS is set, use those specific origins
+/// Otherwise, allow all origins (for development)
+fn build_cors_layer(config: &Config) -> CorsLayer {
+    if let Some(ref allowed_origins) = config.cors_allowed_origins {
+        // Parse comma-separated list of origins
+        let origins: Vec<&str> = allowed_origins.split(',').map(|s| s.trim()).collect();
+        
+        if origins.is_empty() || (origins.len() == 1 && origins[0] == "*") {
+            // Allow all origins
+            tracing::warn!("CORS configured to allow all origins - this should not be used in production!");
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        } else {
+            // Allow specific origins
+            tracing::info!("CORS configured to allow specific origins: {:?}", origins);
+            let mut cors = CorsLayer::new();
+            
+            for origin in origins {
+                cors = cors.allow_origin(origin.parse::<axum::http::HeaderValue>().unwrap_or_else(|_| {
+                    tracing::warn!("Invalid origin '{}', skipping", origin);
+                    axum::http::HeaderValue::from_static("")
+                }));
+            }
+            
+            cors.allow_methods(Any)
+                .allow_headers(Any)
+        }
+    } else {
+        // Default: allow all origins (development mode)
+        tracing::warn!("CORS_ALLOWED_ORIGINS not set, allowing all origins - configure this for production!");
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    }
 }

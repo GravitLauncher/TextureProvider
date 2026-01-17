@@ -17,6 +17,10 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Maximum file size for uploads (1 MB)
+/// PNG texture files for Minecraft skins/capes should never exceed this
+const MAX_FILE_SIZE: usize = 1_048_576; // 1 MB in bytes
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
@@ -143,6 +147,18 @@ pub async fn upload_texture(
                         format!("Failed to read file: {}", e),
                     )
                 })?;
+
+                // Validate file size
+                if data.len() > MAX_FILE_SIZE {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        format!(
+                            "File size {} bytes exceeds maximum allowed size of {} bytes (1 MB)",
+                            data.len(),
+                            MAX_FILE_SIZE
+                        ),
+                    ));
+                }
 
                 // Validate PNG
                 if !is_png(&data) {
@@ -330,6 +346,18 @@ pub async fn admin_upload_texture(
                         format!("Failed to read file: {}", e),
                     )
                 })?;
+
+                // Validate file size
+                if data.len() > MAX_FILE_SIZE {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        format!(
+                            "File size {} bytes exceeds maximum allowed size of {} bytes (1 MB)",
+                            data.len(),
+                            MAX_FILE_SIZE
+                        ),
+                    ));
+                }
 
                 // Validate PNG
                 if !is_png(&data) {
