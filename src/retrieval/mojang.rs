@@ -232,6 +232,53 @@ impl MojangRetriever {
 
 #[async_trait]
 impl TextureRetriever for MojangRetriever {
+    async fn get_texture(
+        &self,
+        user_uuid: Uuid,
+        texture_type: TextureType,
+    ) -> Result<Option<RetrievedTexture>> {
+        let mut fetch_uuid = user_uuid;
+
+        if self.use_database_username_in_mojang_requests {
+            if let Some(db) = &self.db {
+                match sqlx::query!(
+                    r#"
+                    SELECT username
+                    FROM username_mappings
+                    WHERE user_uuid = $1
+                    LIMIT 1
+                    "#,
+                    user_uuid
+                ).fetch_optional(db).await {
+                    Ok(Some(record)) => {
+                        match self.resolve_username_to_uuid(&record.username).await {
+                            Ok(Some(resolved_uuid)) => {
+                                fetch_uuid = resolved_uuid;
+                            }
+                            Ok(None) => {
+                                tracing::warn!(
+                                    "Username '{}' not found in Mojang API, using original UUID",
+                                    record.username
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to resolve username from Mojang: {}", e);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!("No username mapping found for UUID {}", user_uuid);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to lookup username from database: {}", e);
+                    }
+                }
+            }
+        }
+
+        self.get_texture_from_mojang(fetch_uuid, texture_type).await
+    }
+
     async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
         let mut fetch_uuid = user_uuid;
 

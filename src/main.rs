@@ -24,8 +24,8 @@ use crate::auth::decode_key;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load .env file
-    dotenvy::dotenv()?;
+    // Load .env file (ignore error if file doesn't exist, e.g., in Docker)
+    let _ = dotenvy::dotenv();
 
     // Initialize tracing
     tracing_subscriber::registry()

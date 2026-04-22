@@ -199,7 +199,7 @@ pub async fn upload_texture(
     // Store file with proper extension
     let file_url = state
         .storage
-        .store_file(file_bytes.clone(), &hash, texture_type.file_extension())
+        .store_file(file_bytes, &hash, texture_type.file_extension())
         .await
         .map_err(|e| {
             tracing::error!("Failed to store file: {}", e);
@@ -399,7 +399,7 @@ pub async fn admin_upload_texture(
                 let username_str = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        format!("Failed to read user UUID: {}", e),
+                        format!("Failed to read username: {}", e),
                     )
                 })?;
                 user_username = Some(username_str);
@@ -448,7 +448,7 @@ pub async fn admin_upload_texture(
     // Store file with proper extension
     let file_url = state
         .storage
-        .store_file(file_bytes.clone(), &hash, texture_type.file_extension())
+        .store_file(file_bytes, &hash, texture_type.file_extension())
         .await
         .map_err(|e| {
             tracing::error!("Failed to store file: {}", e);

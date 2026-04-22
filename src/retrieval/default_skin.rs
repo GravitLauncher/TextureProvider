@@ -19,7 +19,7 @@ pub struct DefaultSkinRetriever {
 impl DefaultSkinRetriever {
     pub fn new() -> Self {
         // The official default Steve skin from Minecraft
-        let default_steve_url = "http://textures.minecraft.net/texture/1a4af718455d58aab3011401517e43cb6f84b5f9cbd717f8df0334e0b88b8ecf".to_string();
+        let default_steve_url = "https://textures.minecraft.net/texture/1a4af718455d58aab3011401517e43cb6f84b5f9cbd717f8df0334e0b88b8ecf".to_string();
 
         // Pre-computed hash of the default Steve skin
         let default_steve_hash =
@@ -151,7 +151,7 @@ impl EmbeddedDefaultSkinRetriever {
 impl TextureRetriever for EmbeddedDefaultSkinRetriever {
     async fn get_texture(
         &self,
-        user_uuid: Uuid,
+        _user_uuid: Uuid,
         texture_type: TextureType,
     ) -> Result<Option<RetrievedTexture>> {
         match texture_type {
@@ -172,7 +172,7 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
         }
     }
 
-    async fn get_textures(&self, user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
+    async fn get_textures(&self, _user_uuid: Uuid) -> Result<HashMap<String, RetrievedTexture>> {
         let mut map = HashMap::new();
         let url = format!(
             "{}/download/{}",
@@ -192,7 +192,7 @@ impl TextureRetriever for EmbeddedDefaultSkinRetriever {
 
     async fn get_texture_bytes(
         &self,
-        user_uuid: Uuid,
+        _user_uuid: Uuid,
         texture_type: TextureType,
     ) -> Result<Option<RetrievedTextureBytes>> {
         match texture_type {
