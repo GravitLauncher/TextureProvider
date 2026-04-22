@@ -294,7 +294,7 @@ pub async fn serve_texture_file(
     Path((hash)): Path<(String)>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
     // Get file bytes from storage by hash
-    let file_bytes = state.storage.get_file(&hash, ".png").await.map_err(|e| {
+    let file_bytes = state.storage.get_file(&hash, "png").await.map_err(|e| {
         tracing::error!("Failed to get file: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,

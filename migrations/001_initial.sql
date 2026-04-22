@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS textures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_uuid UUID NOT NULL,
     texture_type TEXT NOT NULL CHECK (texture_type IN ('SKIN', 'CAPE')),
-    file_hash TEXT NOT NULL UNIQUE,
+    file_hash TEXT NOT NULL,
     file_url TEXT NOT NULL,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

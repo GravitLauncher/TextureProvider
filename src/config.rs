@@ -121,8 +121,20 @@ impl Config {
                     "LOCAL_STORAGE_PATH must be set for local storage"
                 ));
             }
-        } else if self.storage_type == StorageType::S3 && self.s3_bucket.is_none() {
-            return Err(anyhow::anyhow!("S3_BUCKET must be set for S3 storage"));
+        } else if self.storage_type == StorageType::S3 {
+            if self.s3_bucket.is_none() {
+                return Err(anyhow::anyhow!("S3_BUCKET must be set for S3 storage"));
+            }
+            // Validate that either credentials are provided or we're relying on IAM roles
+            if self.s3_access_key.is_none() && self.s3_secret_key.is_none() {
+                tracing::warn!(
+                    "S3_ACCESS_KEY and S3_SECRET_KEY not set. Assuming IAM role or instance profile credentials will be used."
+                );
+            } else if self.s3_access_key.is_some() != self.s3_secret_key.is_some() {
+                return Err(anyhow::anyhow!(
+                    "Both S3_ACCESS_KEY and S3_SECRET_KEY must be set together, or both omitted to use IAM roles"
+                ));
+            }
         }
         Ok(())
     }
