@@ -1,13 +1,21 @@
 # Texture Provider Service
 
-A RESTful web service for uploading and managing PNG texture files (SKIN and CAPE) with support for local or S3 storage.
+A high-performance RESTful web service for managing Minecraft texture files (SKIN and CAPE) with flexible storage and retrieval strategies.
 
 ## Features
 
-- Upload PNG files with SHA256 hash-based naming
-- JWT-based authentication using ES256 algorithm
-- Support for both local and S3 storage
-- PostgreSQL database for metadata storage
+- Upload and retrieve PNG texture files with SHA256 hash-based naming
+- JWT-based authentication using ES256 algorithm (compatible with LaunchServer)
+- Flexible storage backends: Local filesystem or S3-compatible storage
+- Flexible retrieval strategies with chain support:
+  - Storage: Retrieve from local database/storage
+  - Mojang: Fallback to official Mojang API
+  - DefaultSkin: Generate default Steve/Alex skins
+  - Chain: Combine multiple strategies with fallback logic
+- PostgreSQL database for metadata and caching
+- Username-based texture lookup with configurable caching
+- Admin API with token-based authentication
+- CORS support with configurable origins
 - Axum web framework for high performance
 - Automatic metadata support (e.g., slim model skins)
 
@@ -22,9 +30,11 @@ JWT_PUBLIC_KEY=BASE64_ECDSA_LAUNCHSERVER_KEY
 
 # Optional (defaults shown)
 BASE_URL=http://localhost:3000
-STORAGE_TYPE=local
-LOCAL_STORAGE_PATH=./uploads
 SERVER_PORT=3000
+
+# Storage Configuration
+STORAGE_TYPE=local                    # Options: local, s3
+LOCAL_STORAGE_PATH=./uploads          # Required if STORAGE_TYPE=local
 
 # S3 Storage (required if STORAGE_TYPE=s3)
 S3_BUCKET=your-bucket-name
@@ -32,6 +42,21 @@ S3_REGION=us-east-1
 S3_ENDPOINT=https://s3.amazonaws.com
 S3_ACCESS_KEY=your-access-key
 S3_SECRET_KEY=your-secret-key
+
+# Retrieval Configuration
+RETRIEVAL_TYPE=storage                # Options: storage, mojang, default_skin
+RETRIEVAL_CHAIN=storage,mojang,default_skin  # Comma-separated fallback chain
+
+# Caching Configuration
+USERNAME_CACHE_SECONDS=28800          # 8 hours (username to UUID cache)
+HASH_CACHE_SECONDS=1209600            # 14 days (texture hash cache)
+USE_DATABASE_USERNAME_IN_MOJANG_REQUESTS=true
+
+# Admin API (optional)
+ADMIN_TOKEN=your-secret-admin-token
+
+# CORS Configuration (optional)
+CORS_ALLOWED_ORIGINS=https://example.com,https://app.example.com  # Comma-separated, or * for all
 ```
 
 ## Database Setup
@@ -142,35 +167,37 @@ cargo build --release
 
 ## API Endpoints
 
-### GET /get/{uuid}
+### Public Endpoints
 
-Get all textures for a user.
+#### GET /get/{uuid}
+
+Get all textures for a user by UUID.
 
 **Response:**
 ```json
 {
   "SKIN": {
-    "url": "http://example.com/SKIN_HASH",
+    "url": "http://example.com/files/SKIN_HASH",
     "digest": "SHA256_HASH",
     "metadata": {
       "model": "slim"
     }
   },
   "CAPE": {
-    "url": "http://example.com/CAPE_HASH",
+    "url": "http://example.com/files/CAPE_HASH",
     "digest": "SHA256_HASH"
   }
 }
 ```
 
-### GET /get/{uuid}/{SKIN|CAPE}
+#### GET /get/{uuid}/{SKIN|CAPE}
 
 Get a specific texture type for a user.
 
 **Response:**
 ```json
 {
-  "url": "http://example.com/SKIN_HASH",
+  "url": "http://example.com/files/SKIN_HASH",
   "digest": "SHA256_HASH",
   "metadata": {
     "model": "slim"
@@ -178,9 +205,35 @@ Get a specific texture type for a user.
 }
 ```
 
-### POST /upload
+#### GET /download/{SKIN|CAPE}/{uuid}
 
-Upload a PNG texture file.
+Download the actual PNG file for a user's texture by UUID.
+
+**Response:** PNG file content
+
+#### GET /download/username/{SKIN|CAPE}/{username}
+
+Download the actual PNG file for a user's texture by username.
+
+**Response:** PNG file content
+
+#### GET /download/{hash}
+
+Download a texture file by its SHA256 hash.
+
+**Response:** PNG file content
+
+#### GET /files/{hash}
+
+Serve a texture file by its SHA256 hash (alternative endpoint).
+
+**Response:** PNG file content
+
+### Authenticated Endpoints
+
+#### POST /upload/{SKIN|CAPE}
+
+Upload a PNG texture file (requires JWT authentication).
 
 **Headers:**
 - `Authorization: Bearer JWT_TOKEN`
@@ -191,7 +244,7 @@ Upload a PNG texture file.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/upload \
+curl -X POST http://localhost:3000/upload/SKIN \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "file=@skin.png" \
   -F 'options={"modelSlim":true}'
@@ -200,7 +253,7 @@ curl -X POST http://localhost:3000/upload \
 **Response:**
 ```json
 {
-  "url": "http://localhost:3000/SKIN_HASH",
+  "url": "http://localhost:3000/files/SKIN_HASH",
   "digest": "SHA256_HASH",
   "metadata": {
     "model": "slim"
@@ -208,15 +261,53 @@ curl -X POST http://localhost:3000/upload \
 }
 ```
 
-### GET /download/{SKIN|CAPE}/{uuid}
+### Admin Endpoints
 
-Download the actual PNG file for a user's texture.
+#### POST /api/upload/{SKIN|CAPE}
 
-**Response:** PNG file content
+Upload a texture for a specific user (requires admin token).
+
+**Headers:**
+- `Authorization: Bearer ADMIN_TOKEN`
+
+**Body:** `multipart/form-data`
+- `file`: PNG image file
+- `uuid`: User UUID
+- `username`: Username (optional)
+- `options`: JSON string with upload options
+
+#### GET /api/get/{username}/{uuid}
+
+Get textures by both username and UUID (requires admin token).
+
+**Headers:**
+- `Authorization: Bearer ADMIN_TOKEN`
+
+## Retrieval Strategies
+
+The service supports multiple texture retrieval strategies that can be used individually or chained together:
+
+### Storage Retriever
+Retrieves textures from the local database and configured storage backend (local or S3).
+
+### Mojang Retriever
+Falls back to the official Mojang API to fetch textures. Supports username-to-UUID resolution with configurable caching.
+
+### Default Skin Retriever
+Generates default Steve or Alex skins based on UUID when no texture is found.
+
+### Chain Retriever
+Combines multiple strategies with fallback logic. Configure via `RETRIEVAL_CHAIN` environment variable:
+
+```bash
+RETRIEVAL_CHAIN=storage,mojang,default_skin
+```
+
+This will try storage first, then Mojang API, and finally generate a default skin if all else fails.
 
 ## JWT Authentication
 
-The service uses ES256 JWT tokens. Include the user UUID in the `uuid` claim:
+The service uses ES256 (ECDSA) JWT tokens compatible with LaunchServer. Include the user UUID in the `uuid` claim:
 
 ```json
 {
@@ -225,7 +316,15 @@ The service uses ES256 JWT tokens. Include the user UUID in the `uuid` claim:
 }
 ```
 
-The JWT public key must be provided in the `JWT_PUBLIC_KEY` environment variable.
+The JWT public key must be provided in base64 format via the `JWT_PUBLIC_KEY` environment variable.
+
+## Admin Authentication
+
+Admin endpoints require a bearer token specified in the `ADMIN_TOKEN` environment variable:
+
+```bash
+curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" http://localhost:3000/api/upload/SKIN
+```
 
 ## Storage Types
 
@@ -235,7 +334,23 @@ Files are stored in the `LOCAL_STORAGE_PATH` directory with SHA256 hash filename
 
 ### S3 Storage
 
-Files are uploaded to the specified S3 bucket with SHA256 hash keys.
+Files are uploaded to the specified S3 bucket with SHA256 hash keys. Supports any S3-compatible storage (AWS S3, MinIO, etc.).
+
+## Caching
+
+The service implements intelligent caching to reduce external API calls:
+
+- **Username Cache**: Caches username-to-UUID mappings for `USERNAME_CACHE_SECONDS` (default: 8 hours)
+- **Hash Cache**: Caches texture hash lookups for `HASH_CACHE_SECONDS` (default: 14 days)
+- **Mojang Integration**: Optionally uses database usernames for Mojang API requests via `USE_DATABASE_USERNAME_IN_MOJANG_REQUESTS`
+
+## CORS Configuration
+
+Configure allowed origins via the `CORS_ALLOWED_ORIGINS` environment variable:
+
+- **Specific origins**: `CORS_ALLOWED_ORIGINS=https://example.com,https://app.example.com`
+- **All origins** (development only): `CORS_ALLOWED_ORIGINS=*`
+- **Not set**: Defaults to allowing all origins (logs a warning)
 
 ## Development
 
@@ -249,12 +364,23 @@ Files are uploaded to the specified S3 bucket with SHA256 hash keys.
 
 ```
 src/
-├── main.rs       # Application entry point
-├── config.rs     # Configuration management
-├── models.rs     # Data models
-├── handlers.rs   # HTTP endpoint handlers
-├── auth.rs       # JWT authentication
-└── storage.rs    # File storage abstraction
+├── main.rs           # Application entry point and server setup
+├── config.rs         # Configuration management and environment variables
+├── models.rs         # Data models and database schemas
+├── handlers.rs       # HTTP endpoint handlers
+├── auth.rs           # JWT authentication and token validation
+├── storage/          # Storage backend implementations
+│   ├── mod.rs        # Storage trait and factory
+│   ├── backend.rs    # Storage backend trait
+│   ├── local.rs      # Local filesystem storage
+│   └── s3.rs         # S3-compatible storage
+└── retrieval/        # Texture retrieval strategies
+    ├── mod.rs        # Retrieval trait and factory
+    ├── backend.rs    # Retrieval backend trait
+    ├── storage_retriever.rs  # Database/storage retrieval
+    ├── mojang.rs     # Mojang API integration
+    ├── default_skin.rs       # Default skin generation
+    └── chain.rs      # Chain retrieval with fallback logic
 ```
 
 ## License
